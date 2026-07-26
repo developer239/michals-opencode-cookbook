@@ -177,7 +177,7 @@ Returns:
 - the full assistant reply parsed from the run log once the run is finished (no truncation)
 - log tail (bytes from the end of the run's log file) while the run is still running or after a failure
 
-Poll no more than once every 5-10 seconds. The runs are real processes; faster polling adds no information.
+Poll approximately every 180 seconds. Long-running agent work rarely changes state often enough for more frequent polling to add useful information.
 
 ### When the run is done
 
@@ -343,7 +343,7 @@ while True:
   s_sol = oc_get_run_status(runId: sol.runId)
   if s_gpt.status != "running" and s_sol.status != "running":
     break
-  sleep(5)
+  sleep(180)
 
 # Read both
 out_gpt = oc_get_session(sessionId: s_gpt.sessionId, isFromEnd: true, limit: 30)
@@ -419,7 +419,7 @@ When designing a multi-agent workflow:
 
 1. **Pick a model once and pass it explicitly on every call.** No defaults, no inheritance.
 2. **Use async mode for parallelism, sync mode for sequential dependence.** Mixing them in one workflow is fine.
-3. **Poll async runs with `oc_get_run_status`** no faster than once per 5-10 seconds.
+3. **Poll async runs with `oc_get_run_status`** approximately every 180 seconds.
 4. **Read replies with `oc_get_session(isFromEnd: true)`** - don't dump the whole session.
 5. **Handle partial failure.** When one fanout child fails, still read the others and report what succeeded.
 6. **Use a fresh session per async fanout child.** Don't share `sessionId` across parallel runs.
@@ -466,7 +466,7 @@ Matches against session titles and message content. Useful for `oc_search_sessio
 
 - Omitting `model` on `oc_run` and relying on the CLI default (silent drift; pass explicit `model` on every call)
 - Substituting a "close enough" model when the user requested a specific one (if it's unavailable, surface that; do not silently swap)
-- Polling async runs faster than once per 5 seconds (wastes resources)
+- Polling async runs more frequently than approximately every 180 seconds (wastes resources without adding useful information)
 - Sharing a `sessionId` across two parallel async runs (interleaved writes to the same conversation)
 - Calling `oc_get_session` with a huge limit when you only need the tail (use `isFromEnd: true, limit: 15`)
 - Restating your own framing in challenge prompts to a thinking partner (wastes turns; state the proposal and ask for specific pushback, with "don't restate my plan")
