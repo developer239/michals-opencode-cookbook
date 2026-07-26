@@ -232,21 +232,6 @@ When the user provides a reference codebase (a working implementation, an upstre
 
 Check dependency and runtime versions early - a version mismatch between environments (host vs container, local vs CI, dev vs prod) is the most common cause of "works on my machine, fails elsewhere" bugs.
 
----
-
-## Code Spacing
-
-Spacing has two axes and only one is a human decision. Horizontal spacing (indent width, token spacing, brace placement, alignment) is formatter-owned: never hand-tune it, and never hand-align assignments, comments, or columns into tidy blocks (renames break them and they fight the formatter). Nesting depth is not cosmetic: it is a direct readout of control-flow complexity, and reducing it (guard clauses, early returns) is the first readability lever, before paragraphing or extraction.
-
-Vertical spacing (blank lines) is where the real convention lives, because formatters leave it alone. Blank lines partition a function into paragraphs, and a paragraph is a run of statements sharing one structural role: setup, a homogeneous list of like operations, an unconditional finalization, a result handoff. Break on a role change; pack statements that share a role.
-
-- **Group by role, not surface form.** Three near-identical optional `if`-adds are one packed paragraph (a list); two `if`s that do structurally different things are separate paragraphs. "These are all config checks" is a surface axis and will always look arbitrary; re-group by what each block structurally does.
-- **Apply the role axis end to end.** Name each paragraph's role; that name must predict every blank line in the function. If two packed lines have different roles, the missing break misrepresents structure; if two separated lines share a role, the break is noise. Quick test: delete a blank line, and if the two adjacent statements still serve the same immediate role, it was noise.
-- **A guard's own `return` stays glued to its guard; the terminal `return` that concludes the function is its own paragraph.** Building the result and handing it back are different roles.
-- **One blank line per role change, never two.** If a function needs heavier internal separation to stay readable, reduce nesting or extract; do not add blank lines.
-
----
-
 ## Output Style
 
 - **No em dashes.** Do not use the em dash character (the long dash, Unicode U+2014). LLMs reach for it constantly; resist. Use a regular hyphen-minus (-), commas, parentheses, or separate sentences instead. This applies everywhere: code, comments, commit messages, PR descriptions, and replies to the user.
