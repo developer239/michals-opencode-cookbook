@@ -1,6 +1,6 @@
 # Michal's OpenCode Cookbook
 
-A shareable agentic setup for [OpenCode](https://opencode.ai) and Claude Code from a single codebase: two plugins (`codebase`, `opencode`), one command, six skills, and global agent instructions. The plugins are written once against the OpenCode plugin API; Claude Code gets the exact same tools through a thin stdio MCP server that loads them from this repo's build output.
+A shareable agentic setup for [OpenCode](https://opencode.ai) and Claude Code from a single codebase: the core plugins, skills, commands, and global agent instructions. The plugins are written once against the OpenCode plugin API; Claude Code gets the exact same tools through a thin stdio MCP server that loads them from this repo's build output.
 
 ## Quick Start
 
