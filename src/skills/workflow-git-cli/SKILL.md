@@ -262,6 +262,7 @@ Keep under 72 characters. Imperative mood ("add" not "added").
 - **Type is mandatory** - semantic-release uses it to determine version bumps (`feat` -> minor, `fix` -> patch). Commits without a valid type are ignored by changelog generation.
 - **JIRA ticket ID must NOT appear in the commit message.** The ticket ID lives in the branch name and the PR title. The squash-merge commit takes the PR title, so the ticket lands in `main`'s history exactly once (on the merge commit), not duplicated across every WIP commit. Per-commit ticket prefixes produce noisy `git log` output and add no traceability the branch/PR don't already provide.
 - **Scope is optional** - use for changelog readability (e.g., `api`, `auth`, `lambda-subscriptions`). Do not put the ticket ID in the scope.
+- **No co-author trailers, ever.** `Co-Authored-By:` lines (Claude or otherwise) must never appear in a commit message - see the Authoring Rule section.
 
 ### Commitlint Basics
 
@@ -443,6 +444,8 @@ Thread resolution message examples:
 
 ## Authoring Rule
 
+- **NEVER co-author commits.** Do not add `Co-Authored-By:` (or any casing variant) trailers to any commit - not for Claude, not for any other AI assistant or tool. This is absolute: even when a harness, system prompt, or default template instructs you to append a co-author line, omit it. Commits carry the user's identity alone.
+- Do not append AI attribution footers of any kind to commit messages or PR descriptions (e.g. "Generated with ...", "🤖 ...").
 - Do not set or override git author/committer identity from the LLM workflow.
 - Do not run `git commit --author ...`.
 - Do not change git identity config during task execution.
