@@ -24,7 +24,6 @@ This rebuilds `dist/` and runs `scripts/link-opencode.sh`, which:
 - Copies `src/skills/*/` to `~/.config/opencode/skills/`
 - Copies `src/commands/*.md` to `~/.config/opencode/commands/`
 - Copies `opencode.json` to `~/.config/opencode/opencode.json` with the `plugin` path rewritten to this repo's `dist/index.js` (an existing global config is backed up first)
-- Optionally symlinks `AGENTS.md` into repositories listed in `.env` (see below)
 
 Rerun it whenever skills, commands, `opencode.json`, or plugin sources change. Everything is installed as a real copy, not a symlink (containers bind-mounting `~/.config/opencode` would otherwise see dangling host paths), so edits to the installed copies are lost on the next rerun - always edit the sources here.
 
@@ -56,10 +55,6 @@ Claude Code asks for confirmation on every MCP tool call by default. To approve 
 ```
 
 Granular alternative: per-tool rules like `"mcp__opencode__codebase_find_definition"`.
-
-### 4. Share AGENTS.md across repositories
-
-Optionally, `scripts/link-opencode.sh` can symlink the root `AGENTS.md` into your repositories so every project loads the same instructions. Copy `.env.example` to `.env`, list the target repos in `AGENTS_SYMLINK_PATHS` (colon-separated), and rerun `pnpm run symlink:opencode`. `AGENTS_SYMLINK_SCAN_ROOTS` additionally removes stale AGENTS.md symlinks from sibling repos that are no longer listed.
 
 ## Plugins
 
