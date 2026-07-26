@@ -527,7 +527,8 @@ export class LspService {
   private readonly getDefinitionType = (node: ts.Node): string => {
     if (ts.isPropertyDeclaration(node)) {
       const isFunctionProperty =
-        node.initializer !== undefined && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+        node.initializer !== undefined &&
+        (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
       return isFunctionProperty ? 'method' : 'variable'
     }
 
