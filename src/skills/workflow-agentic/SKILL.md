@@ -68,8 +68,8 @@ Returns the reply text + sessionId + exitCode. Use for:
 ### Asynchronous (fanout pattern)
 
 ```
-handleA = oc_run(prompt: "...", model: "openai/gpt-5.5",                         mode: "async")
-handleB = oc_run(prompt: "...", model: "zai-coding-plan/glm-5.2", mode: "async")
+handleA = oc_run(prompt: "...", model: "openai/gpt-5.5",     mode: "async")
+handleB = oc_run(prompt: "...", model: "openai/gpt-5.6-sol", mode: "async")
 ```
 
 Returns `{ runId, pid, logPath, sessionId }` immediately. The opencode process runs in the background. Use for:
@@ -97,8 +97,8 @@ The model sees the full prior conversation and can reference anything from earli
 The session is model-agnostic WITHIN its runtime, not across runtimes. An opencode session (`ses_*`) can be continued by any opencode model on any turn:
 
 ```
-oc_run(prompt: "...", model: "openai/gpt-5.5",           sessionId: "ses_...")
-oc_run(prompt: "...", model: "zai-coding-plan/glm-5.2", sessionId: "ses_...")
+oc_run(prompt: "...", model: "openai/gpt-5.5",     sessionId: "ses_...")
+oc_run(prompt: "...", model: "openai/gpt-5.6-sol", sessionId: "ses_...")
 ```
 
 The new model sees the same conversation history. Use this when you want a second opinion partway through an existing thread.
@@ -212,35 +212,41 @@ If you only need the final answer, do NOT explicitly set `isFromEnd: false` with
 
 Only the model IDs in this table are supported.
 
-| Model ID                      | Provider  | Runtime  | Strengths                                  |
-| ----------------------------- | --------- | -------- | ------------------------------------------ |
-| `openai/gpt-5.5`              | OpenAI    | opencode | Strong reasoning, balanced                 |
-| `openai/gpt-5.5-fast`         | OpenAI    | opencode | Fast 5.5, lighter reasoning                |
-| `openai/gpt-5.4`              | OpenAI    | opencode | Reliable persistence, established baseline |
-| `zai-coding-plan/glm-5.2`     | z.ai      | opencode | Current GLM flagship, balanced reasoning   |
-| `zai-coding-plan/glm-5-turbo` | z.ai      | opencode | Fast GLM 5 variant                         |
-| `claude-fable-5`              | Anthropic | claude   | Frontier reasoning, hardest problems       |
-| `claude-opus-4-8`             | Anthropic | claude   | Strong reasoning, balanced                 |
-| `claude-sonnet-5`             | Anthropic | claude   | Balanced capability and speed              |
-| `claude-haiku-4-5-20251001`   | Anthropic | claude   | Fast and cheap, smoke tests                |
+| Model ID                     | Provider  | Runtime  | Strengths                                  |
+| ---------------------------- | --------- | -------- | ------------------------------------------ |
+| `openai/gpt-5.3-codex-spark` | OpenAI    | opencode | Codex line, fast agentic coding            |
+| `openai/gpt-5.4`             | OpenAI    | opencode | Reliable persistence, established baseline |
+| `openai/gpt-5.4-fast`        | OpenAI    | opencode | Fast 5.4 variant                           |
+| `openai/gpt-5.4-mini`        | OpenAI    | opencode | Small 5.4, cheap                           |
+| `openai/gpt-5.4-mini-fast`   | OpenAI    | opencode | Fastest and cheapest 5.4                   |
+| `openai/gpt-5.5`             | OpenAI    | opencode | Strong reasoning, balanced                 |
+| `openai/gpt-5.5-fast`        | OpenAI    | opencode | Fast 5.5, lighter reasoning                |
+| `openai/gpt-5.6-luna`        | OpenAI    | opencode | 5.6 family, luna profile                   |
+| `openai/gpt-5.6-luna-fast`   | OpenAI    | opencode | Fast luna variant                          |
+| `openai/gpt-5.6-sol`         | OpenAI    | opencode | 5.6 family, sol profile                    |
+| `openai/gpt-5.6-sol-fast`    | OpenAI    | opencode | Fast sol variant                           |
+| `openai/gpt-5.6-terra`       | OpenAI    | opencode | 5.6 family, terra profile                  |
+| `openai/gpt-5.6-terra-fast`  | OpenAI    | opencode | Fast terra variant                         |
+| `claude-fable-5`             | Anthropic | claude   | Frontier reasoning, hardest problems       |
+| `claude-mythos-5`            | Anthropic | claude   | Fable-class sibling (approved orgs only)   |
+| `claude-opus-4-8`            | Anthropic | claude   | Strong reasoning, balanced                 |
+| `claude-sonnet-5`            | Anthropic | claude   | Balanced capability and speed              |
+| `claude-haiku-4-5`           | Anthropic | claude   | Fast and cheap, smoke tests                |
 
 The model id picks the runtime: provider-prefixed ids dispatch the `opencode` CLI, bare claude ids (or the aliases `fable`, `opus`, `sonnet`, `haiku`) dispatch the `claude` CLI. Any other un-prefixed id is a validation error - `oc_run` never silently routes to a default runner.
-
-The z.ai coding plan ids are plain (`zai-coding-plan/glm-5.2`) - no effort or context suffix. The z.ai coding plan provider ships with the standard opencode install and shares the same `~/.local/share/opencode/auth.json` credentials as every other provider, so no extra setup is required. The full family (`glm-4.5-air`, `glm-4.7`, `glm-5-turbo`, `glm-5.1`, `glm-5.2`, `glm-5v-turbo`) is listed by `opencode models`; the table above is the curated subset worth selecting by hand.
 
 Claude runs use the user's existing `claude` CLI auth and inherit the global `~/.claude/settings.json` permissions - no extra setup. Note the runtime split for session tooling: claude sessions are UUID-identified JSONL transcripts under `~/.claude/projects/`, so `oc_get_session` / `oc_list_sessions` / `oc_search_sessions` cannot read them (they reject UUID session ids with an explicit error). Read a claude reply from the sync result, or - for async runs - from `oc_get_run_status`, which returns the full assistant reply parsed from the run log once the run finishes (no truncation; the raw log tail appears only while running or after a failure).
 
 ### Selection Heuristics
 
-| Task type | Recommended model |
-| -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------ |
-| Complex implementation, architecture | Quick fixes, simple tasks | `openai/gpt-5.5-fast` or `zai-coding-plan/glm-5-turbo` |
-| Code review | `openai/gpt-5.5` or `zai-coding-plan/glm-5.2` |
-| Pair-programming thinking-partner | `openai/gpt-5.5` or `zai-coding-plan/glm-5.2` |
-| Multi-model consultation (adversarial) | Mix providers (e.g. `openai/gpt-5.5` + `zai-coding-plan/glm-5.2`) |
-| Smoke testing | `openai/gpt-5.4` |
-
-| Large codebase exploration
+| Task type                              | Recommended model                                                                            |
+| -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Complex implementation, architecture   | `openai/gpt-5.5` or `claude-fable-5`                                                         |
+| Quick fixes, simple tasks              | `openai/gpt-5.5-fast` or `openai/gpt-5.4-mini-fast`                                          |
+| Code review                            | `openai/gpt-5.5` or `claude-opus-4-8`                                                        |
+| Pair-programming thinking-partner      | `openai/gpt-5.5` or `openai/gpt-5.6-sol`                                                     |
+| Multi-model consultation (adversarial) | Mix profiles and providers (e.g. `openai/gpt-5.5` + `openai/gpt-5.6-sol` + `claude-fable-5`) |
+| Smoke testing                          | `openai/gpt-5.4` or `claude-haiku-4-5`                                                       |
 
 ### Model is mandatory on every call
 
@@ -268,8 +274,8 @@ When the user requests a specific model, use exactly that ID. Do not substitute 
 Two async runs against different models run in parallel:
 
 ```
-a = oc_run(prompt: "...", model: "openai/gpt-5.5",           mode: "async")
-b = oc_run(prompt: "...", model: "zai-coding-plan/glm-5.2", mode: "async")
+a = oc_run(prompt: "...", model: "openai/gpt-5.5",     mode: "async")
+b = oc_run(prompt: "...", model: "openai/gpt-5.6-sol", mode: "async")
 # poll both until both complete
 ```
 
@@ -297,8 +303,8 @@ The second call sees the full prior conversation.
 ### Switching models mid-thread
 
 ```
-first  = oc_run(prompt: "Outline a plan.",        model: "openai/gpt-5.5",                                 )
-second = oc_run(prompt: "Challenge that outline.", model: "zai-coding-plan/glm-5.2", sessionId: first.sessionId)
+first  = oc_run(prompt: "Outline a plan.",         model: "openai/gpt-5.5")
+second = oc_run(prompt: "Challenge that outline.", model: "openai/gpt-5.6-sol", sessionId: first.sessionId)
 ```
 
 The new model sees the same conversation. The previous model's reply is part of the history.
@@ -328,20 +334,20 @@ The orchestrator can spawn child runs asynchronously and synthesize their output
 
 ```
 # Dispatch in parallel
-gpt = oc_run(prompt: "<briefing + question>", model: "openai/gpt-5.5",           mode: "async")
-glm = oc_run(prompt: "<briefing + question>", model: "zai-coding-plan/glm-5.2", mode: "async")
+gpt = oc_run(prompt: "<briefing + question>", model: "openai/gpt-5.5",     mode: "async")
+sol = oc_run(prompt: "<briefing + question>", model: "openai/gpt-5.6-sol", mode: "async")
 
 # Poll both
 while True:
   s_gpt = oc_get_run_status(runId: gpt.runId)
-  s_glm = oc_get_run_status(runId: glm.runId)
-  if s_gpt.status != "running" and s_glm.status != "running":
+  s_sol = oc_get_run_status(runId: sol.runId)
+  if s_gpt.status != "running" and s_sol.status != "running":
     break
   sleep(5)
 
 # Read both
 out_gpt = oc_get_session(sessionId: s_gpt.sessionId, isFromEnd: true, limit: 30)
-out_glm = oc_get_session(sessionId: s_glm.sessionId, isFromEnd: true, limit: 30)
+out_sol = oc_get_session(sessionId: s_sol.sessionId, isFromEnd: true, limit: 30)
 # synthesize
 ```
 
@@ -374,16 +380,16 @@ The thinking-partner pattern scales to a panel of partners you keep alive for a 
 Bootstrap each partner once with the same briefing, record its session id, and reuse that id for every later consultation. The session ids are the panel handles - they survive the orchestrator dying (see Session Continuity), so a panel can be resumed later via `oc_search_sessions`.
 
 ```
-gpt = oc_run(prompt: "<shared briefing>", model: "openai/gpt-5.5",          mode: "async")
-glm = oc_run(prompt: "<shared briefing>", model: "zai-coding-plan/glm-5.2", mode: "async")
-# record gpt.sessionId and glm.sessionId - reuse them for the rest of the session
+gpt = oc_run(prompt: "<shared briefing>", model: "openai/gpt-5.5",     mode: "async")
+sol = oc_run(prompt: "<shared briefing>", model: "openai/gpt-5.6-sol", mode: "async")
+# record gpt.sessionId and sol.sessionId - reuse them for the rest of the session
 ```
 
 One partner, one session. Never share a session id across two parallel async runs - interleaved writes corrupt the conversation (see Concurrency Model).
 
 ### Choose complementary models
 
-A panel earns its cost only if the members reason differently. Mix providers and profiles so each catches what the others miss - for example a systematic edge-case/correctness model (`openai/gpt-5.5`) alongside a balanced cross-provider model (`zai-coding-plan/glm-5.2`). Two instances of the same model give you one perspective at double the cost.
+A panel earns its cost only if the members reason differently. Mix profiles and providers so each catches what the others miss - for example a systematic edge-case/correctness model (`openai/gpt-5.5`) alongside a different-profile model (`openai/gpt-5.6-sol`) or a cross-provider perspective (`claude-fable-5`). Two instances of the same model give you one perspective at double the cost.
 
 ### Consultation patterns
 
@@ -488,8 +494,8 @@ r3 = oc_run(prompt: "Step 3...", model: MODEL, sessionId: r2.sessionId)
 ### Parallel multi-model consultation
 
 ```
-a = oc_run(prompt: "...", model: "openai/gpt-5.5",           mode: "async")
-b = oc_run(prompt: "...", model: "zai-coding-plan/glm-5.2", mode: "async")
+a = oc_run(prompt: "...", model: "openai/gpt-5.5",     mode: "async")
+b = oc_run(prompt: "...", model: "openai/gpt-5.6-sol", mode: "async")
 # poll both via oc_get_run_status; when both done, read sessions
 ra = oc_get_session(sessionId: <a's sessionId>, isFromEnd: true, limit: 30)
 rb = oc_get_session(sessionId: <b's sessionId>, isFromEnd: true, limit: 30)
@@ -511,5 +517,5 @@ session = hello.sessionId
 oc_run(prompt: "Read these files: ...",                            model: "openai/gpt-5.5", sessionId: session)
 oc_run(prompt: "Pressure-test X. Three things to verify...",       model: "openai/gpt-5.5", sessionId: session)
 # switch mid-thread without losing context:
-oc_run(prompt: "Same question, second opinion.",                   model: "zai-coding-plan/glm-5.2", sessionId: session)
+oc_run(prompt: "Same question, second opinion.",                   model: "openai/gpt-5.6-sol", sessionId: session)
 ```

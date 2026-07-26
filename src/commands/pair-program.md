@@ -1,7 +1,7 @@
-description: Spawn a thinking-partner via a local opencode run (GPT 5.5 by default, GLM 5.2 selectable), warm it up with "Hello 👋", and report the session id so follow-up consultations land in the same thread
+description: Spawn a thinking-partner via a local opencode run (GPT 5.5 by default, other GPT and Claude models selectable), warm it up with "Hello 👋", and report the session id so follow-up consultations land in the same thread
 agent: orchestrator
 
-Dispatch a single local opencode run against the selected model (`openai/gpt-5.5` by default, or `zai-coding-plan/glm-5.2`) with "Hello 👋" to establish a stable session, then report the session id back to the user so they can dispatch follow-up challenge runs into the same thread for the rest of the task. The partner runs on the host (no Docker, no environments) using the orchestrator's own `~/.local/share/opencode/auth.json` credentials. Both models are available with no extra setup - the z.ai coding plan provider ships with the standard opencode install and shares the same credentials as every other provider. The partner is rooted in the working directory you resolve in Step 2 and pass on every dispatch via `cwd`.
+Dispatch a single local opencode run against the selected model (`openai/gpt-5.5` by default) with "Hello 👋" to establish a stable session, then report the session id back to the user so they can dispatch follow-up challenge runs into the same thread for the rest of the task. The partner runs on the host (no Docker, no environments) using the orchestrator's own `~/.local/share/opencode/auth.json` credentials; claude partners use the `claude` CLI's own auth. The partner is rooted in the working directory you resolve in Step 2 and pass on every dispatch via `cwd`.
 
 ## When to Use
 
@@ -23,15 +23,24 @@ Do not use this command for:
 
 ## Model Selection
 
-Resolve the partner model from `$ARGUMENTS` before dispatching. Both options are first-class and require no special setup.
+Resolve the partner model from `$ARGUMENTS` before dispatching. All options are first-class and require no special setup.
 
-| `$ARGUMENTS` token          | Resolved model            | Notes                      |
-| --------------------------- | ------------------------- | -------------------------- |
-| (none)                      | `openai/gpt-5.5`          | Default thinking-partner   |
-| `gpt`, `gpt-5.5`            | `openai/gpt-5.5`          | OpenAI thinking-partner    |
-| `glm`, `glm-5.2`, `glm 5.2` | `zai-coding-plan/glm-5.2` | GLM 5.2 (z.ai coding plan) |
+| `$ARGUMENTS` token                       | Resolved model     | Notes                                     |
+| ---------------------------------------- | ------------------ | ----------------------------------------- |
+| (none)                                   | `openai/gpt-5.5`   | Default thinking-partner                  |
+| `gpt`, `gpt-5.5`                         | `openai/gpt-5.5`   | OpenAI thinking-partner                   |
+| any other `gpt-*` id from the GPT family | `openai/<token>`   | e.g. `gpt-5.6-sol` → `openai/gpt-5.6-sol` |
+| `fable`, `claude-fable-5`                | `claude-fable-5`   | Anthropic frontier partner                |
+| `mythos`, `claude-mythos-5`              | `claude-mythos-5`  | Fable-class (approved orgs only)          |
+| `opus`, `claude-opus-4-8`                | `claude-opus-4-8`  | Anthropic partner                         |
+| `sonnet`, `claude-sonnet-5`              | `claude-sonnet-5`  | Anthropic partner                         |
+| `haiku`, `claude-haiku-4-5`              | `claude-haiku-4-5` | Fast Anthropic partner                    |
+
+The supported GPT family: `gpt-5.3-codex-spark`, `gpt-5.4`, `gpt-5.4-fast`, `gpt-5.4-mini`, `gpt-5.4-mini-fast`, `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.6-luna`, `gpt-5.6-luna-fast`, `gpt-5.6-sol`, `gpt-5.6-sol-fast`, `gpt-5.6-terra`, `gpt-5.6-terra-fast`.
 
 If `$ARGUMENTS` names any other model that is not in the table, ask the user rather than guessing. Carry the resolved model id into Step 3 and echo it back in the Step 4 report.
+
+Note on claude partners: claude sessions are JSONL transcripts under `~/.claude/projects/` (UUID ids), not entries in opencode's SQLite store - `oc_search_sessions` cannot find them, and resuming one requires `oc_run` with a claude model and the same `cwd`.
 
 ## Step 1 - Load the agentic skill (Blocking Gate)
 
@@ -73,7 +82,7 @@ Quote the partner's reply text verbatim (one or two lines) to confirm it's orien
 
 - **Session id** - the user passes `sessionId: <id>` on every follow-up consultation to keep the partner's accumulated context.
 - **Working directory** - the absolute path the partner is rooted in. **The user must pass this same `cwd:` on every follow-up dispatch** or the partner will silently answer against whatever the orchestrator's `cwd` is at the time of the call.
-- **Model** - the resolved model id (`openai/gpt-5.5` or `zai-coding-plan/glm-5.2`) and a one-line note that mid-thread model switches are supported (just pass a different `model` on a subsequent `oc_run` with the same `sessionId`).
+- **Model** - the resolved model id and a one-line note that mid-thread model switches are supported within the opencode runtime (just pass a different `model` on a subsequent `oc_run` with the same `sessionId`).
 - A copy-pasteable follow-up snippet the user can adapt:
 
   ```
@@ -85,6 +94,6 @@ Quote the partner's reply text verbatim (one or two lines) to confirm it's orien
   )
   ```
 
-- A reminder that the session persists in `~/.local/share/opencode/opencode.db` and can be resumed later (or searched via `oc_search_sessions`) - there is no environment to release.
+- A reminder that the session persists in `~/.local/share/opencode/opencode.db` and can be resumed later (or searched via `oc_search_sessions`) - there is no environment to release. Claude partner sessions persist as transcripts under `~/.claude/projects/` instead.
 
 Final status: **DONE - partner ready** with the session id and reply summary, or **BLOCKED - <reason>** with the failing step named.

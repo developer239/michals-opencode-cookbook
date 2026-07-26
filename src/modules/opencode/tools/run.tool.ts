@@ -26,9 +26,9 @@ const schema = {
   model: tool.schema
     .string()
     .describe(
-      'Model id. Provider-prefixed ids (e.g. openai/gpt-5.5, zai-coding-plan/glm-5.2) dispatch the `opencode` CLI. ' +
-        'Bare claude ids (e.g. claude-fable-5, claude-haiku-4-5-20251001) or the aliases fable/opus/sonnet/haiku ' +
-        'dispatch the `claude` CLI. Any other un-prefixed id is a validation error.'
+      'Model id. Provider-prefixed ids (e.g. openai/gpt-5.5, openai/gpt-5.6-sol) dispatch the `opencode` CLI. ' +
+        'Bare claude ids (e.g. claude-fable-5, claude-mythos-5, claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5) ' +
+        'or the aliases fable/opus/sonnet/haiku dispatch the `claude` CLI. Any other un-prefixed id is a validation error.'
     ),
   agent: tool.schema.string().optional().describe('Agent name passed to the dispatched CLI (e.g. orchestrator).'),
   command: tool.schema
@@ -80,7 +80,7 @@ export class RunTool extends BaseTool<IRunArgs> {
     return tool({
       description:
         'Dispatch a local agentic run against a model. The model id picks the CLI: provider-prefixed ids ' +
-        '(openai/..., zai-coding-plan/...) run `opencode`, bare claude ids or aliases (fable/opus/sonnet/haiku) run ' +
+        '(openai/...) run `opencode`, bare claude ids or aliases (fable/opus/sonnet/haiku) run ' +
         '`claude`. Two modes: sync (block, return final reply + sessionId) and async (background, return runId + ' +
         'sessionId immediately for later polling via oc_get_run_status). Pass sessionId to continue an existing ' +
         'conversation within the same runtime; omit to start a new one. Always pass `model` explicitly - the ' +
