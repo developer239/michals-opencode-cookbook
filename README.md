@@ -4,7 +4,16 @@ A shareable agentic setup for [OpenCode](https://opencode.ai) and Claude Code fr
 
 ## Quick Start
 
-### 1. Install and build
+### 1. Install the CLIs
+
+Both harnesses are installed via Homebrew:
+
+```bash
+brew install opencode
+brew install --cask claude-code
+```
+
+### 2. Install and build
 
 ```bash
 pnpm install
@@ -13,7 +22,7 @@ pnpm run build
 
 Requires Node 24 (`.nvmrc`) and pnpm 11 (pinned via the `packageManager` field; `corepack enable` gets the right version).
 
-### 2. Link globally into OpenCode
+### 3. Link globally into OpenCode
 
 ```bash
 pnpm run symlink:opencode
@@ -27,7 +36,7 @@ This rebuilds `dist/` and runs `scripts/link-opencode.sh`, which:
 
 Rerun it whenever skills, commands, `opencode.json`, or plugin sources change. Everything is installed as a real copy, not a symlink (containers bind-mounting `~/.config/opencode` would otherwise see dangling host paths), so edits to the installed copies are lost on the next rerun - always edit the sources here.
 
-### 3. Link globally into Claude Code
+### 4. Link globally into Claude Code
 
 ```bash
 pnpm run symlink:claude-code
@@ -38,7 +47,7 @@ This rebuilds `dist/` and runs `scripts/link-claude-code.sh`, which:
 - Registers the `opencode` MCP server in user scope (`claude mcp add --scope user`), so tools are available in every project as `mcp__opencode__<tool>` (e.g. `mcp__opencode__codebase_find_definition`)
 - Copies `src/skills/*/` to `~/.claude/skills/`
 - Copies `src/commands/*.md` to `~/.claude/commands/`, converting the fence-less OpenCode headers to Claude Code frontmatter and dropping OpenCode-only keys (`agent`, `model`, `user-invocable`)
-- Copies `AGENTS.md` to `~/.claude/CLAUDE.md` as an exact copy, so the same global instructions load in every Claude Code session. If a `~/.claude/CLAUDE.md` not created by this installer already exists, the script stops instead of overwriting it.
+- Copies `AGENTS.md` to `~/.claude/CLAUDE.md` as an exact copy, so the same global instructions load in every Claude Code session. A `~/.claude/CLAUDE.md` not created by this installer is backed up to `CLAUDE.md.backup.<timestamp>` first - merge anything you want to keep into this repo's `AGENTS.md` and rerun.
 
 Installs are tracked in `~/.claude/.opencode-cookbook-manifest.json`; each rerun removes exactly what the previous run installed before copying, so renames and deletions propagate while skills, commands, and instruction files from other sources in `~/.claude` are never touched.
 
@@ -152,6 +161,6 @@ One note on the dual TypeScript dependency: TypeScript 7 (the native compiler) n
 - Edits to the installed copies at `~/.claude/` or `~/.config/opencode/` are lost on the next symlink run.
 - Edit the sources in `src/skills/` or `src/commands/`, then rerun `pnpm run symlink`.
 
-**`~/.claude/CLAUDE.md` already exists**
+**My `~/.claude/CLAUDE.md` was replaced**
 
-- The Claude Code installer refuses to overwrite a CLAUDE.md it does not manage. Move it aside or merge its content into this repo's `AGENTS.md` and rerun.
+- The Claude Code installer backs up a CLAUDE.md it does not manage to `~/.claude/CLAUDE.md.backup.<timestamp>` before installing its own. Merge anything you want to keep into this repo's `AGENTS.md` and rerun.

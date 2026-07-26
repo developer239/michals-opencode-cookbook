@@ -18,6 +18,7 @@ python3 - "$PROJECT_ROOT" "$CLAUDE_HOME" <<'PY'
 import json
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 project_root = Path(sys.argv[1])
@@ -83,13 +84,16 @@ for command_file in sorted(commands_src.glob('*.md')):
 
 # Global instructions: Claude Code reads ~/.claude/CLAUDE.md in every session,
 # the same role AGENTS.md plays for OpenCode. Exact copy, no transformation.
+# A CLAUDE.md not created by this installer (the manifest cleanup above already
+# removed a managed one) is backed up with a timestamp, mirroring how the
+# OpenCode installer treats an existing global opencode.json - the install
+# must succeed on every machine, and nothing is lost.
 if not agents_src.exists():
     sys.exit(f'AGENTS.md not found at {agents_src}')
 if claude_md_dest.exists():
-    sys.exit(
-        f'{claude_md_dest} already exists and is not managed by this installer - '
-        f'move it aside or merge its content into {agents_src} and rerun'
-    )
+    backup_path = claude_md_dest.with_name(f'CLAUDE.md.backup.{datetime.now().strftime("%Y%m%d%H%M%S")}')
+    shutil.move(claude_md_dest, backup_path)
+    print(f'  backed up existing unmanaged CLAUDE.md to {backup_path}')
 shutil.copyfile(agents_src, claude_md_dest)
 print('  memory   CLAUDE.md (exact copy of AGENTS.md)')
 
