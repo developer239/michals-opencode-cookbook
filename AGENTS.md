@@ -232,6 +232,8 @@ When the user provides a reference codebase (a working implementation, an upstre
 
 Check dependency and runtime versions early - a version mismatch between environments (host vs container, local vs CI, dev vs prod) is the most common cause of "works on my machine, fails elsewhere" bugs.
 
+---
+
 ## Output Style
 
 - **No em dashes.** Do not use the em dash character (the long dash, Unicode U+2014). LLMs reach for it constantly; resist. Use a regular hyphen-minus (-), commas, parentheses, or separate sentences instead. This applies everywhere: code, comments, commit messages, PR descriptions, and replies to the user.
