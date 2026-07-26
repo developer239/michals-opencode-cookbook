@@ -100,13 +100,14 @@ One command ships with the setup:
 
 - `/pair-program` - spawn a persistent thinking-partner session via a local opencode run and keep consulting it in the same thread
 
-Six skills:
+The skills:
 
 - `workflow-agentic` - conventions for dispatching local opencode runs as agentic workers (sync vs async, model selection, session continuity, multi-model fanout)
 - `language-typescript` - TypeScript conventions and architecture guidance
 - `workflow-git-cli` - Git CLI workflow conventions (branching, staging, commits, PRs)
 - `workflow-git-worktree` - git worktree conventions for parallel multi-agent work
 - `write-skill` - conventions for authoring SKILL.md files
+- `write-command` - conventions for authoring OpenCode command files
 - `develop-opencode-plugins` - patterns for implementing or extending the plugins in this repo
 
 ## Authentication

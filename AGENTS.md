@@ -119,6 +119,7 @@ Rules worth consideration when making structural decisions:
 | Multi-model orchestration, thinking partners   | `workflow-agentic`                         |
 | Parallel agents editing the same repo          | `workflow-git-worktree`                    |
 | Writing or reviewing SKILL.md files            | `write-skill`                              |
+| Authoring OpenCode command files               | `write-command`                            |
 | Implementing or extending the OpenCode plugins | `develop-opencode-plugins`                 |
 
 Load multiple skills when a task spans categories (a refactor typically needs `language-typescript` + `workflow-git-cli` at minimum). Load skills before you start, not halfway through - the cost of loading upfront is near zero, the cost of inconsistent output is high. If no skill applies to the task, proceed without one.
