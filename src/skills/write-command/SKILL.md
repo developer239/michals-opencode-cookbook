@@ -16,7 +16,6 @@ Every command file starts with YAML frontmatter followed by a `---` separator.
 ### Required fields
 
 - **`description`**: One sentence, imperative mood, describing what the command does. This appears in the command list and helps the model route to the correct command.
-- **`agent`**: Which agent runs this command. Almost always `orchestrator`.
 
 ### Optional fields
 
