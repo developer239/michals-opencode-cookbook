@@ -1,0 +1,41 @@
+{
+  "name": "michals-opencode-cookbook",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "symlink": "pnpm run symlink:opencode && ./scripts/link-claude-code.sh",
+    "symlink:opencode": "pnpm run build && ./scripts/link-opencode.sh",
+    "symlink:claude-code": "pnpm run build && ./scripts/link-claude-code.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@opencode-ai/plugin": "1.17.13",
+    "glob": "13.0.6",
+    "typescript-api": "npm:typescript@5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.1.0",
+    "oxfmt": "0.58.0",
+    "oxlint": "1.73.0",
+    "oxlint-tsgolint": "0.24.0",
+    "typescript": "7.0.2"
+  },
+  "packageManager": "pnpm@11.11.0"
+}
