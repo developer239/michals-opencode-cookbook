@@ -14,9 +14,7 @@
 
 6. **PATTERN MATCHING OVER INNOVATION** - Always follow existing codebase patterns discovered via tools. Never invent new patterns.
 
-7. **NO INTERNAL SKILL/COMMAND REFERENCES IN OUTPUT** - Never mention internal skill names, command names, or conventions by name in any user-facing output (PR descriptions, review comments, commit messages, JIRA comments, Slack messages). Do not write things like "per workflow-git-cli conventions" or "using COMMENT per convention" - apply the convention silently. Rationale must be stated in plain terms, not by citing the rule source.
-
-8. **IMAGES AND VIDEO VIA VISION TOOLS ONLY** - You cannot read image or video bytes with `read`/`bash`; that output is unusable. Use `read_image` (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.svg`) or `read_video` (short clips under 60s) - both take a local path or http(s) URL as `source`, delegate to a vision model, and return a text description. Always pass a specific `prompt` so one call gets what you need (transcribe an error, read a chart, describe a UI or a recorded repro). Use sparingly: each call spawns a subprocess and a vision round-trip. Never point them at text/code/JSON you can already read directly.
+7. **NO INTERNAL SKILL/COMMAND REFERENCES IN OUTPUT** - Never mention internal skill names, command names, or conventions by name in any user-facing output (PR descriptions, review comments, commit messages). Do not write things like "per workflow-git-cli conventions" or "using COMMENT per convention" - apply the convention silently. Rationale must be stated in plain terms, not by citing the rule source.
 
 ## Intent Over Literal Steps
 
@@ -111,26 +109,23 @@ Rules worth consideration when making structural decisions:
 
 ### When to Load Skills
 
-| Task involves...                     | Load skill                                 |
-| ------------------------------------ | ------------------------------------------ |
-| Any code changes (TypeScript)        | `language-typescript`                      |
-| Git branching, commits, pushes       | `workflow-git-cli`                         |
-| Writing or updating tests            | `develop-tests`                            |
-| Refactoring or cleanup               | `language-typescript` + `workflow-git-cli` |
-| Creating or reviewing PRs            | `workflow-git-cli`                         |
-| Code review                          | `language-typescript` + `workflow-git-cli` |
-| Database migrations                  | `develop-monorepo`                         |
-| Creating JIRA tickets                | `write-jira-ticket`                        |
-| Working on monorepo apps or packages | `develop-monorepo`                         |
-| Terraform / infra                    | `language-terraform`                       |
+| Task involves...                               | Load skill                                 |
+| ---------------------------------------------- | ------------------------------------------ |
+| Any code changes (TypeScript)                  | `language-typescript`                      |
+| Git branching, commits, pushes                 | `workflow-git-cli`                         |
+| Refactoring or cleanup                         | `language-typescript` + `workflow-git-cli` |
+| Creating or reviewing PRs                      | `workflow-git-cli`                         |
+| Code review                                    | `language-typescript` + `workflow-git-cli` |
+| Multi-model orchestration, thinking partners   | `workflow-agentic`                         |
+| Parallel agents editing the same repo          | `workflow-git-worktree`                    |
+| Writing or reviewing SKILL.md files            | `write-skill`                              |
+| Implementing or extending the OpenCode plugins | `develop-opencode-plugins`                 |
 
-Load multiple skills when a task spans categories (implementing a ticket typically needs `language-typescript` + `develop-tests` + `workflow-git-cli` at minimum). Load skills before you start, not halfway through - the cost of loading upfront is near zero, the cost of inconsistent output is high. If no skill applies to the task, proceed without one.
+Load multiple skills when a task spans categories (a refactor typically needs `language-typescript` + `workflow-git-cli` at minimum). Load skills before you start, not halfway through - the cost of loading upfront is near zero, the cost of inconsistent output is high. If no skill applies to the task, proceed without one.
 
 **Command shortcuts:**
 
-- "Review this PR" / "Review code" -> `/review` command
-- "Implement this ticket" -> `/implement` command
-- "Merge and deploy" / "ship it" -> `/chirp-merge` command
+- "Spawn a thinking partner" / "consult another model throughout this task" -> `/pair-program` command
 
 ---
 
@@ -161,13 +156,6 @@ File discovery notes:
 
 Always start with codebase_project_structure if you don't know the layout.
 ```
-
-### GitHub Tool Routing
-
-- Use `github_*` tools for remote GitHub operations by default (PR create/get/diff/comments/reviews/checks/workflows/merge).
-- Use `git` / `gh` only for local workspace operations (for example `gh pr checkout` to switch local branch).
-- If a required remote operation has no `github_*` tool, say so and escalate to `gh` explicitly for that step.
-- Do not mix `github_*` and `gh` for the same remote operation in one task.
 
 ### Phase 2: Planning
 
@@ -260,4 +248,4 @@ Vertical spacing (blank lines) is where the real convention lives, because forma
 
 ## Output Style
 
-- **No em dashes.** Do not use the em dash character (the long dash, Unicode U+2014). LLMs reach for it constantly; resist. Use a regular hyphen-minus (-), commas, parentheses, or separate sentences instead. This applies everywhere: code, comments, commit messages, PR descriptions, JIRA tickets, Slack messages, and replies to the user.
+- **No em dashes.** Do not use the em dash character (the long dash, Unicode U+2014). LLMs reach for it constantly; resist. Use a regular hyphen-minus (-), commas, parentheses, or separate sentences instead. This applies everywhere: code, comments, commit messages, PR descriptions, and replies to the user.
