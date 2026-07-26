@@ -7,10 +7,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_SRC="$PROJECT_ROOT/src/skills"
 COMMANDS_SRC="$PROJECT_ROOT/src/commands"
 CONFIG_SRC="$PROJECT_ROOT/opencode.json"
+AGENTS_SRC="$PROJECT_ROOT/AGENTS.md"
 
 SKILLS_DEST="$HOME/.config/opencode/skills"
 COMMANDS_DEST="$HOME/.config/opencode/commands"
 CONFIG_DEST="$HOME/.config/opencode/opencode.json"
+AGENTS_DEST="$HOME/.config/opencode/AGENTS.md"
 
 if [ ! -f "$PROJECT_ROOT/dist/index.js" ]; then
   echo "dist/index.js not found - run 'pnpm run symlink:opencode' (which builds first) or 'pnpm run build'" >&2
@@ -46,8 +48,25 @@ for f in "$COMMANDS_SRC"/*.md; do
   echo "  $(basename "$f")"
 done
 
+# Global instructions: OpenCode loads ~/.config/opencode/AGENTS.md in every
+# session unless the project has its own AGENTS.md, the same role CLAUDE.md
+# plays for Claude Code. An existing unmanaged real file is backed up with a
+# timestamp, mirroring how this installer treats an existing opencode.json.
+if [ -L "$AGENTS_DEST" ]; then
+  rm "$AGENTS_DEST"
+  echo "Removed stale symlink at $AGENTS_DEST"
+elif [ -e "$AGENTS_DEST" ] && ! cmp -s "$AGENTS_SRC" "$AGENTS_DEST"; then
+  AGENTS_BACKUP_PATH="$AGENTS_DEST.backup.$(date +%Y%m%d%H%M%S)"
+  cp "$AGENTS_DEST" "$AGENTS_BACKUP_PATH"
+  echo "Backed up existing global AGENTS.md to $AGENTS_BACKUP_PATH"
+fi
+
+cp "$AGENTS_SRC" "$AGENTS_DEST"
 echo ""
-echo "Done. Skills and commands are now available globally in OpenCode."
+echo "Copied AGENTS.md -> $AGENTS_DEST"
+
+echo ""
+echo "Done. Skills, commands, and global instructions are now available globally in OpenCode."
 
 if [ -f "$CONFIG_SRC" ]; then
   if [ -L "$CONFIG_DEST" ]; then

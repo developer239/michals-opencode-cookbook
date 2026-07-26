@@ -32,6 +32,7 @@ This rebuilds `dist/` and runs `scripts/link-opencode.sh`, which:
 
 - Copies `src/skills/*/` to `~/.config/opencode/skills/`
 - Copies `src/commands/*.md` to `~/.config/opencode/commands/`
+- Copies `AGENTS.md` to `~/.config/opencode/AGENTS.md`, so the same global instructions load in every OpenCode session (the same role the CLAUDE.md copy plays for Claude Code). A repo's own `AGENTS.md` takes precedence in that repo; an existing unmanaged global file is backed up with a timestamp first.
 - Copies `opencode.json` to `~/.config/opencode/opencode.json` with the `plugin` path rewritten to this repo's `dist/index.js` (an existing global config is backed up first)
 
 Rerun it whenever skills, commands, `opencode.json`, or plugin sources change. Everything is installed as a real copy, not a symlink (containers bind-mounting `~/.config/opencode` would otherwise see dangling host paths), so edits to the installed copies are lost on the next rerun - always edit the sources here.
