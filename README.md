@@ -20,7 +20,7 @@ pnpm install
 pnpm run build
 ```
 
-Requires Node 24 (`.nvmrc`) and pnpm 11 (pinned via the `packageManager` field; `corepack enable` gets the right version).
+Requires Node 24 (`mise.toml`; `mise install` gets it) and pnpm 11 (pinned via the `packageManager` field; `corepack enable` gets the right version).
 
 ### 3. Link globally into OpenCode
 
