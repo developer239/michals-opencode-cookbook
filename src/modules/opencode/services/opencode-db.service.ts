@@ -69,12 +69,6 @@ export class OpenCodeDbService {
     this.logger = new Logger('OpenCodeDb', client)
   }
 
-  public sessionExists = (sessionId: string): Promise<boolean> =>
-    this.withDb((db) => {
-      const row = db.prepare('SELECT id FROM session WHERE id = ? LIMIT 1').get(sessionId)
-      return row !== undefined
-    })
-
   public listSessions = (limit: number): Promise<IConversationSession[]> =>
     this.withDb((db) => {
       const rows = db
@@ -145,17 +139,6 @@ export class OpenCodeDbService {
       const record = row as Record<string, unknown>
       const value = record.count
       return typeof value === 'number' ? value : 0
-    })
-
-  public getLatestPartTimestamp = (sessionId: string): Promise<number | null> =>
-    this.withDb((db) => {
-      const row = db.prepare('SELECT MAX(time_created) as latest FROM part WHERE session_id = ?').get(sessionId)
-      if (row === undefined) {
-        return null
-      }
-      const record = row as Record<string, unknown>
-      const value = record.latest
-      return typeof value === 'number' ? value : null
     })
 
   // Look for an explicit completion marker (step-finish part) on the session.

@@ -43,19 +43,6 @@ export abstract class BaseTool<TArgs extends object = Record<string, unknown>> {
     )
   }
 
-  protected readonly askSensitiveReadPermission = async (
-    context: ToolContext | undefined,
-    permissionKey: string,
-    description: string
-  ): Promise<void> => {
-    await this.askPermission(
-      context,
-      permissionKey,
-      description,
-      'Sensitive read operations require interactive tool context for explicit approval'
-    )
-  }
-
   private readonly askPermission = async (
     context: ToolContext | undefined,
     permissionKey: string,

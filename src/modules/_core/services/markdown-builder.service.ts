@@ -24,13 +24,6 @@ export class MarkdownBuilder {
     return this
   }
 
-  public separator = (): this => {
-    this.lines.push('')
-    this.lines.push('---')
-    this.lines.push('')
-    return this
-  }
-
   public bullet = (text: string, indent = 0): this => {
     const prefix = '  '.repeat(indent)
     this.lines.push(`${prefix}- ${text}`)

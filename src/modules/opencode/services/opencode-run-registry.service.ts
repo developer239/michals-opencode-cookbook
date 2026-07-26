@@ -24,8 +24,6 @@ export class OpenCodeRunRegistryService {
     this.logger = new Logger('OpencodeRunRegistry', client)
   }
 
-  public list = (): IOpenCodeRunRecord[] => this.read().runs
-
   public get = (runId: string): IOpenCodeRunRecord | null => this.read().runs.find((row) => row.runId === runId) ?? null
 
   public register = (record: IOpenCodeRunRecord): void => {
@@ -45,16 +43,6 @@ export class OpenCodeRunRegistryService {
     data.runs[index] = updated
     this.write(data)
     return updated
-  }
-
-  public prune = (maxAgeMs: number): void => {
-    const cutoff = Date.now() - maxAgeMs
-    const data = this.read()
-    const before = data.runs.length
-    data.runs = data.runs.filter((row) => row.startedAt >= cutoff || row.status === 'running')
-    if (data.runs.length !== before) {
-      this.write(data)
-    }
   }
 
   private readonly read = (): IRegistryFile => {

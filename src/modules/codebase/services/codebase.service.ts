@@ -6,35 +6,6 @@ import { MarkdownBuilder } from '../../_core/services/markdown-builder.service.j
 import { DEFAULT_IGNORE_PATTERNS, DEFAULT_WHITELIST_EXTENSIONS, STRUCTURE_VISIBLE_FILES } from '../config.js'
 
 export class CodebaseService {
-  public globFiles = async (
-    projectPath: string,
-    pattern: string,
-    options: {
-      ignorePatterns?: string[]
-      includeGitignore?: boolean
-      dot?: boolean
-      absolute?: boolean
-      nodir?: boolean
-    } = {}
-  ): Promise<string[]> => {
-    const ignorePatterns = options.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS
-    const shouldRespectGitignore = options.includeGitignore ?? true
-    const shouldIncludeDotfiles = options.dot ?? false
-    const shouldReturnAbsolutePaths = options.absolute ?? false
-    const shouldExcludeDirectories = options.nodir ?? true
-
-    const gitignorePatterns = shouldRespectGitignore ? await this.parseGitignore(projectPath) : []
-    const allIgnorePatterns = [...ignorePatterns, ...gitignorePatterns]
-
-    return glob(pattern, {
-      cwd: projectPath,
-      ignore: allIgnorePatterns,
-      absolute: shouldReturnAbsolutePaths,
-      dot: shouldIncludeDotfiles,
-      nodir: shouldExcludeDirectories,
-    })
-  }
-
   public discoverFiles = async (
     projectPath: string,
     options: {

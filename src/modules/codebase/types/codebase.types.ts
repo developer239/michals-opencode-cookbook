@@ -16,11 +16,6 @@ export interface IProjectStructureInput {
   showFileExtensions?: boolean
 }
 
-export interface IAskAboutFileInput {
-  filePath: string
-  question: string
-}
-
 export interface IFindUnusedSymbolsInput {
   projectPath: string
   relativePath?: string
