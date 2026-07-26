@@ -766,7 +766,7 @@ Workers and webhook handlers must be idempotent. The same job or event processed
 - Comments explain "why", not "what". Avoid comments that restate code.
 - Complex logic has explanatory comments or is broken into named steps.
 - No `@ts-ignore` or `@ts-expect-error`; fix the underlying type issue instead.
-- No `eslint-disable` unless there is a documented, unavoidable reason inline.
+- No `oxlint-disable` unless there is a documented, unavoidable reason inline.
 
 ## Testing Alignment
 
@@ -966,7 +966,7 @@ Things that look like cleanup but silently flip the contract:
 
 If any of these would change the output for a given input, the extraction is no longer behaviour-preserving and the test suite that pins downstream order has to change with it. That is acceptable but it is no longer a refactor - it is a behavioural change in disguise.
 
-Rule: copy the body, keep the `// eslint-disable` comments that flagged the intentional-bit-twiddling, do not "tidy." If a cleaner algorithm is genuinely better, propose it as a separate behavioural-change commit with the test suite updated to match the new permutation.
+Rule: copy the body, keep the `// oxlint-disable` comments that flagged the intentional-bit-twiddling, do not "tidy." If a cleaner algorithm is genuinely better, propose it as a separate behavioural-change commit with the test suite updated to match the new permutation.
 
 ### Inline one-call wrappers
 
@@ -1055,7 +1055,7 @@ public findCommunityPopularActivities(
 ```
 
 The rule of thumb: if dropping the wrapper would force you to add
-`// eslint-disable-next-line max-params` to call sites, the typed input is
+`// oxlint-disable-next-line max-params` to call sites, the typed input is
 not a wrapper - it is the contract. Keep it.
 
 ### Passthrough methods - merge when public only packs params for a private method
@@ -1214,7 +1214,7 @@ if (!hasPermission(user)) {
 // ❌
 // @ts-ignore
 // @ts-expect-error
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// oxlint-disable-next-line typescript/no-unused-vars
 const data: any = value
 
 // ✅ fix the actual problem
@@ -1385,7 +1385,7 @@ At least once during every refactor session, run `codebase_find_unused_symbols` 
 - split type files for one pipeline: config types, data types, and error types for the same domain scattered across 3+ files when they could be 1-2 files
 - widening existing domain enums or named type aliases to anonymous `string`/`number` types
 - no single-line `if` statements (including `return`, `throw`, `continue`, `break`); always use braces and multiline blocks
-- no escape hatches: no `@ts-ignore`, no `@ts-expect-error`, no `eslint-disable`, no `any`
+- no escape hatches: no `@ts-ignore`, no `@ts-expect-error`, no `oxlint-disable`, no `any`
 - no SQL/ORM N+1 query patterns
 - no multi-write operations without a transaction boundary
 - no injection-prone patterns (SQL/NoSQL/command/template)

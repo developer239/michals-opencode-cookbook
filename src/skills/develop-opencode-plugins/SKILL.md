@@ -159,7 +159,7 @@ Key rules:
 
 - Plugin must not fail during initialization - if credentials are missing, log a warning and continue. Tools fail at call time with descriptive errors.
 - Services are constructed with explicit dependency injection - no singletons, no global state.
-- Tool names in this repo use `snake_case` (e.g. `aws_create_iam_user`). This is a repo convention for readable, namespaced tool ids, and it matches the file-based-tools naming rule upstream. It is not a hard requirement of the plugin `tool` hook - those tools are keyed by whatever object key you supply - but keep the convention for consistency. Add the `/* eslint-disable camelcase */` guard around the tool map as the existing plugins do.
+- Tool names in this repo use `snake_case` (e.g. `oc_run`, `codebase_find_definition`). This is a repo convention for readable, namespaced tool ids, and it matches the file-based-tools naming rule upstream. It is not a hard requirement of the plugin `tool` hook - those tools are keyed by whatever object key you supply - but keep the convention for consistency.
 
 ### Service Layer Pattern
 

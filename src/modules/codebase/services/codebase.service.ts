@@ -1,4 +1,4 @@
-/* eslint-disable no-await-in-loop */
+/* oxlint-disable no-await-in-loop -- directory trees and file counts are walked sequentially so output order stays deterministic */
 import { type Dirent, promises as fs } from 'node:fs'
 import { join, relative } from 'node:path'
 import { glob } from 'glob'

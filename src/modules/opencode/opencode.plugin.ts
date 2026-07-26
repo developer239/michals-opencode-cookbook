@@ -20,7 +20,6 @@ export const OpenCodePlugin: Plugin = ({ client }) => {
 
   logger.log('OpenCode plugin initialized (local CLI mode)')
 
-  /* eslint-disable camelcase -- OpenCode requires snake_case tool names */
   return Promise.resolve({
     tool: {
       oc_run: RunTool.create(cli, formatting, client),
@@ -30,5 +29,4 @@ export const OpenCodePlugin: Plugin = ({ client }) => {
       oc_search_sessions: SearchSessionsTool.create(db, formatting),
     },
   })
-  /* eslint-enable camelcase */
 }

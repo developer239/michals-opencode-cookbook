@@ -4,6 +4,19 @@ import type { CodebaseService } from './codebase.service.js'
 
 const SOURCE_EXTENSIONS = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs']
 
+// Node-kind checks are mutually exclusive, so lookup order carries no meaning
+// beyond a stable iteration. Property declarations are handled separately in
+// getDefinitionType because their label depends on the initializer.
+const DEFINITION_TYPE_CHECKS: [(node: ts.Node) => boolean, string][] = [
+  [ts.isClassDeclaration, 'class'],
+  [ts.isFunctionDeclaration, 'function'],
+  [ts.isInterfaceDeclaration, 'interface'],
+  [ts.isTypeAliasDeclaration, 'type'],
+  [ts.isEnumDeclaration, 'enum'],
+  [ts.isVariableDeclaration, 'variable'],
+  [ts.isMethodDeclaration, 'method'],
+]
+
 interface IDefinitionMatch {
   term: string
   type: string
@@ -383,7 +396,7 @@ export class LspService {
   }
 
   private readonly resolveAliasedSymbol = (symbol: ts.Symbol, checker: ts.TypeChecker): ts.Symbol => {
-    // eslint-disable-next-line no-bitwise
+    // oxlint-disable-next-line no-bitwise -- ts.SymbolFlags is a bitmask; & is the API's membership test
     if ((symbol.flags & ts.SymbolFlags.Alias) === 0) {
       return symbol
     }
@@ -511,36 +524,15 @@ export class LspService {
     return null
   }
 
-  // eslint-disable-next-line complexity
   private readonly getDefinitionType = (node: ts.Node): string => {
-    if (ts.isClassDeclaration(node)) {
-      return 'class'
-    }
-    if (ts.isFunctionDeclaration(node)) {
-      return 'function'
-    }
-    if (ts.isInterfaceDeclaration(node)) {
-      return 'interface'
-    }
-    if (ts.isTypeAliasDeclaration(node)) {
-      return 'type'
-    }
-    if (ts.isEnumDeclaration(node)) {
-      return 'enum'
-    }
-    if (ts.isVariableDeclaration(node)) {
-      return 'variable'
-    }
     if (ts.isPropertyDeclaration(node)) {
-      if (node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
-        return 'method'
-      }
-      return 'variable'
+      const isFunctionProperty =
+        node.initializer !== undefined && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+      return isFunctionProperty ? 'method' : 'variable'
     }
-    if (ts.isMethodDeclaration(node)) {
-      return 'method'
-    }
-    return 'symbol'
+
+    const match = DEFINITION_TYPE_CHECKS.find(([predicate]) => predicate(node))
+    return match?.[1] ?? 'symbol'
   }
 
   private readonly getUsageType = (node: ts.Identifier): string => {

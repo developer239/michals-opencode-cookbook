@@ -83,7 +83,6 @@ export class Logger {
   private readonly emitToConsole = (level: LogLevel, message: string, trace?: unknown): void => {
     const label = level.toUpperCase().padEnd(5, ' ')
     const formatted = `${label} [${this.context}] ${message}`
-    /* eslint-disable no-console -- console is the deliberate fallback when no SDK client is wired */
     switch (level) {
       case 'error':
         console.error(formatted, trace ?? '')
@@ -98,7 +97,6 @@ export class Logger {
       default:
         console.log(formatted)
     }
-    /* eslint-enable no-console */
   }
 
   // Errors do not JSON-serialize usefully (JSON.stringify(new Error()) is "{}"),
