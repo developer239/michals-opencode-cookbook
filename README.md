@@ -1,19 +1,33 @@
 # Michal's OpenCode Cookbook
 
-A shareable agentic setup for [OpenCode](https://opencode.ai) and Claude Code from a single codebase: the core plugins, skills, commands, and global agent instructions. The plugins are written once against the OpenCode plugin API; Claude Code gets the exact same tools through a thin stdio MCP server that loads them from this repo's build output.
+A shareable agentic setup for [OpenCode](https://opencode.ai) and Claude Code from a single codebase: plugins, skills, commands, and global agent instructions, written once and installed into both.
 
-## Quick Start
+## Multi-provider orchestration
+
+Being locked into one provider inside one harness is a real limitation: quotas and rate limits hit differently per provider, and a setup that only works in OpenCode is hard to hand to someone who prefers Claude Code. The `oc_*` tools expose the same local dispatch to both harnesses - either one can spawn a run against another provider's model using the `opencode` and `claude` CLIs already on the host, with no control plane, no containers, and no separate environment to manage.
+
+`/pair-program` is the entry point. It opens a thinking-partner session against a chosen model (`openai/gpt-5.5` by default, any other GPT model, or a Claude model), hands back a session id, and every follow-up consultation for the rest of the task lands in that same thread - model switches included, even across providers: pass a different `model` on a later call with the same session id.
+
+![A Claude Code session and an OpenCode session side by side, both running the same project-structure tool](docs/images/multi-provider-dispatch.png)
+
+The Claude Code session on the left loads the `workflow-agentic` skill and dispatches a GPT-5.5 agent to analyze the project; it reports back the same structure the OpenCode session on the right produced natively. The next prompt in that same thread switches the conversation to a different model entirely, `glm-5.2`, using the session id GPT-5.5 just returned.
+
+The bridge itself stays small. An early prototype came in at four TypeScript files, 261 lines total:
+
+![Terminal output of tree and cloc on an early prototype, showing four TypeScript files totaling 261 lines](docs/images/bridge-footprint.png)
+
+## How to run it
 
 ### 1. Install the CLIs
 
-Both harnesses are installed via Homebrew:
+Both harnesses install via Homebrew:
 
 ```bash
 brew install opencode
 brew install --cask claude-code
 ```
 
-### 2. Install and build
+### 2. Install dependencies and build
 
 ```bash
 pnpm install
@@ -22,37 +36,15 @@ pnpm run build
 
 Requires Node 24 (`mise.toml`; `mise install` gets it) and pnpm 11 (pinned via the `packageManager` field; `corepack enable` gets the right version).
 
-### 3. Link globally into OpenCode
+### 3. Install into both harnesses
 
 ```bash
-pnpm run symlink:opencode
+pnpm run symlink
 ```
 
-This rebuilds `dist/` and runs `scripts/link-opencode.sh`, which:
+This rebuilds `dist/`, copies the skills, commands, and global instructions into `~/.config/opencode/` and `~/.claude/`, and registers the MCP server with Claude Code. Rerun it whenever skills, commands, or plugin sources change - everything is installed as a real copy, not a symlink, so edits to the installed files are lost on the next rerun. Always edit the sources in this repo.
 
-- Copies `src/skills/*/` to `~/.config/opencode/skills/`
-- Copies `src/commands/*.md` to `~/.config/opencode/commands/`
-- Copies `AGENTS.md` to `~/.config/opencode/AGENTS.md`, so the same global instructions load in every OpenCode session (the same role the CLAUDE.md copy plays for Claude Code). A repo's own `AGENTS.md` takes precedence in that repo; an existing unmanaged global file is backed up with a timestamp first.
-- Copies `opencode.json` to `~/.config/opencode/opencode.json` with the `plugin` path rewritten to this repo's `dist/index.js` (an existing global config is backed up first)
-
-Rerun it whenever skills, commands, `opencode.json`, or plugin sources change. Everything is installed as a real copy, not a symlink (containers bind-mounting `~/.config/opencode` would otherwise see dangling host paths), so edits to the installed copies are lost on the next rerun - always edit the sources here.
-
-### 4. Link globally into Claude Code
-
-```bash
-pnpm run symlink:claude-code
-```
-
-This rebuilds `dist/` and runs `scripts/link-claude-code.sh`, which:
-
-- Registers the `opencode` MCP server in user scope (`claude mcp add --scope user`), so tools are available in every project as `mcp__opencode__<tool>` (e.g. `mcp__opencode__codebase_find_definition`)
-- Copies `src/skills/*/` to `~/.claude/skills/`
-- Copies `src/commands/*.md` to `~/.claude/commands/`, converting the fence-less OpenCode headers to Claude Code frontmatter and dropping OpenCode-only keys (`agent`, `model`, `user-invocable`)
-- Copies `AGENTS.md` to `~/.claude/CLAUDE.md` as an exact copy, so the same global instructions load in every Claude Code session. A `~/.claude/CLAUDE.md` not created by this installer is backed up to `CLAUDE.md.backup.<timestamp>` first - merge anything you want to keep into this repo's `AGENTS.md` and rerun.
-
-Installs are tracked in `~/.claude/.opencode-cookbook-manifest.json`; each rerun removes exactly what the previous run installed before copying, so renames and deletions propagate while skills, commands, and instruction files from other sources in `~/.claude` are never touched.
-
-`pnpm run symlink` runs both installers.
+To install into just one harness: `pnpm run symlink:opencode` or `pnpm run symlink:claude-code`.
 
 Claude Code asks for confirmation on every MCP tool call by default. To approve the whole server once, add to `~/.claude/settings.json`:
 
@@ -66,36 +58,41 @@ Claude Code asks for confirmation on every MCP tool call by default. To approve 
 
 Granular alternative: per-tool rules like `"mcp__opencode__codebase_find_definition"`.
 
+## What it does
+
+- Copies the skills and commands under `src/skills/` and `src/commands/` into both harnesses' global config directories, and copies `AGENTS.md` as the global instructions file each one reads on startup (`AGENTS.md` for OpenCode, `CLAUDE.md` for Claude Code). Installs are real copies, not symlinks, so a container bind-mounting `~/.config/opencode` still sees real files instead of dangling host paths.
+- Defines a set of tools once, as OpenCode plugins, and exposes the same tools to both harnesses: OpenCode loads them natively through the plugin API, and Claude Code gets them through a bundled stdio MCP server that wraps the same plugin code.
+
 ## Plugins
 
-| Module     | Tools | What it covers                                                                            |
-| ---------- | ----- | ----------------------------------------------------------------------------------------- |
-| `codebase` | 4     | TypeScript-aware code navigation: definitions, call tracing, unused symbols, project tree |
-| `opencode` | 5     | Local `opencode run` / `claude -p` dispatch and session store access                      |
+| Module     | Tools | What it covers                                                                             |
+| ---------- | ----- | -------------------------------------------------------------------------------------------- |
+| `codebase` | 4     | TypeScript-aware code navigation: definitions, call tracing, unused symbols, project tree  |
+| `opencode` | 5     | Local `opencode run` / `claude -p` dispatch and session store access                       |
 
 **codebase** - `codebase_find_definition`, `codebase_trace_calls`, `codebase_find_unused_symbols` (TypeScript compiler API over the target project's own `tsconfig.json`), and `codebase_project_structure` (works on any directory).
 
 **opencode** - `oc_run` (sync or async dispatch), `oc_get_run_status`, `oc_get_session`, `oc_list_sessions`, `oc_search_sessions`.
 
-## OpenCode Run Dispatch
+## OpenCode run dispatch
 
-The opencode plugin dispatches local agentic runs on the host - a thin wrapper around the CLIs you already use interactively, with no control plane, Docker, or environments. The model id on `oc_run` picks the runner: provider-prefixed ids (`openai/gpt-5.5`, `openai/gpt-5.6-sol`) spawn `opencode run`, bare claude ids or aliases (`claude-fable-5`, `haiku`) spawn `claude -p`. Any other un-prefixed model id is rejected - nothing routes to a default runner silently. Dispatch modes (sync vs async), the `oc_*` tool surface, model selection, and the consultation patterns are documented in the `workflow-agentic` skill - this section covers only the operator-facing configuration.
+Model id routes the runner: provider-prefixed ids (`openai/gpt-5.5`, `openai/gpt-5.6-sol`) spawn `opencode run`; bare claude ids or aliases (`claude-fable-5`, `haiku`) spawn `claude -p`. Any other un-prefixed model id is rejected - nothing routes to a default runner silently. Dispatch modes (sync vs async), the full `oc_*` tool surface, model selection, and the consultation patterns are documented in the `workflow-agentic` skill; this section covers only the operator-facing configuration.
 
-Sessions are runtime-bound. Opencode sessions (`ses_*`) persist in OpenCode's local SQLite store (`~/.local/share/opencode/opencode.db`), the same place interactive sessions live, and are readable via `oc_get_session` / `oc_list_sessions` / `oc_search_sessions`. Claude sessions (UUID ids) are JSONL transcripts under `~/.claude/projects/` - the session tools reject them with an explicit error, and continuing one requires `oc_run` with a claude model (and the same `cwd` as the original run). Claude child processes inherit the user's global `~/.claude/settings.json` permissions.
+Sessions are runtime-bound. OpenCode sessions (`ses_*`) persist in OpenCode's local SQLite store (`~/.local/share/opencode/opencode.db`), the same place interactive sessions live, and are readable via `oc_get_session`, `oc_list_sessions`, and `oc_search_sessions`. Claude sessions (UUID ids) are JSONL transcripts under `~/.claude/projects/` - the session tools reject them with an explicit error, and continuing one requires `oc_run` with a claude model and the same `cwd` as the original run. Claude child processes inherit the user's global `~/.claude/settings.json` permissions.
 
 ### Configuration
 
 The plugin resolves each path from an environment variable, falling back to the defaults below.
 
 | Env var                      | Default                                      | Purpose                                                |
-| ---------------------------- | -------------------------------------------- | ------------------------------------------------------ |
+| ----------------------------- | --------------------------------------------- | -------------------------------------------------------- |
 | `OPENCODE_BIN`               | `opencode` (resolved from PATH)              | Override path to the opencode binary                   |
 | `CLAUDE_BIN`                 | `claude` (resolved from PATH)                | Override path to the claude binary (claude-model runs) |
 | `OPENCODE_DB_PATH`           | `~/.local/share/opencode/opencode.db`        | Override SQLite database path                          |
-| `OPENCODE_ASYNC_LOG_DIR`     | `~/.local/share/opencode/oc-async-runs`      | Where async run logs are written (both runners)        |
-| `OPENCODE_RUN_REGISTRY_PATH` | `~/.local/share/opencode/oc-async-runs.json` | Where the async run registry lives (both runners)      |
+| `OPENCODE_ASYNC_LOG_DIR`     | `~/.local/share/opencode/oc-async-runs`      | Where async run logs are written (both runners)         |
+| `OPENCODE_RUN_REGISTRY_PATH` | `~/.local/share/opencode/oc-async-runs.json` | Where the async run registry lives (both runners)       |
 
-## Commands and Skills
+## Commands and skills
 
 One command ships with the setup:
 
@@ -121,7 +118,7 @@ The two plugins in this repo need no credentials. This section explains how auth
 
 **How the Claude Code MCP server authenticates.** It doesn't - the server has no auth logic of its own. The plugins read and refresh their credentials from the same files they use under OpenCode, entirely through the filesystem. Connect a provider once via OpenCode and it works in Claude Code automatically; the MCP server never needs to be configured separately. Project-scoped plugin config also keeps working: Claude Code starts the server in the active project directory, so files under a project's `.opencode/config/` resolve per project exactly as under OpenCode.
 
-## How the MCP Server Works
+## How the MCP server works
 
 `src/mcp/server.ts` starts a stdio MCP server. At startup it instantiates the plugin factories from this repo with a shim client (structured logs and toasts land on stderr), converts each tool's zod arg schema to JSON Schema, and registers every tool over MCP: zod-parsed arguments in, markdown text out, image attachments as MCP image content, abort signal wired through to the tool context.
 
