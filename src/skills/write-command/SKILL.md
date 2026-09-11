@@ -16,6 +16,7 @@ Every command file starts with YAML frontmatter followed by a `---` separator.
 ### Required fields
 
 - **`description`**: One sentence, imperative mood, describing what the command does. This appears in the command list and helps the model route to the correct command.
+- **`agent`**: Which agent runs this command. Almost always `orchestrator`.
 
 ### Optional fields
 
@@ -28,15 +29,15 @@ Write in imperative mood, third person implied. Describe the end state, not the 
 
 Good:
 
-- `Spawn a thinking-partner via a local opencode run and report its session id`
-- `Review the current codebase and report findings ranked by severity`
-- `Generate a project onboarding summary from the codebase structure`
+- `Implement a JIRA ticket end-to-end from branch to PR`
+- `Merge a PR, wait for CI, deploy to dev, and update JIRA ticket status`
+- `Review a pull request or the current codebase and submit a GitHub review`
 
 Bad:
 
-- `This command helps you review code` (first person, vague)
-- `Review` (noun, no information)
-- `Use this to review the codebase and report findings` (instructional, not descriptive)
+- `This command helps you implement tickets` (first person, vague)
+- `Implementation` (noun, no information)
+- `Use this to review PRs and submit reviews on GitHub` (instructional, not descriptive)
 
 ## File Structure
 
@@ -60,14 +61,18 @@ Immediately after frontmatter. No heading. Establishes:
 - The mental model or framing (how to think about the task)
 - Scope boundary (what this is NOT for, if non-obvious)
 
-Examples:
+Examples from existing commands:
+
+```
+Implement a JIRA ticket. Work directly in the current project directory. Use `codebase_*` tools for research and read selectively to keep the context window healthy.
+```
 
 ```
 Review code. Work directly in the current project directory. Use `codebase_*` tools for research and read selectively to keep the context window healthy.
 ```
 
 ```
-Dispatch a single local opencode run against the selected model with "Hello 👋" to establish a stable session, then report the session id back to the user so they can dispatch follow-up challenge runs into the same thread for the rest of the task.
+Work through one or more tasks autonomously from intake to deployed and QA-ready. Tasks are worked sequentially but all reads and background operations (CI polling, reviews, JIRA updates, Slack) run in parallel wherever possible.
 ```
 
 The opening paragraph often states the execution model and context-window discipline (e.g. "work directly in the current project directory" + "use `codebase_*` tools and read selectively").
@@ -76,11 +81,11 @@ The opening paragraph often states the execution model and context-window discip
 
 Include this section when:
 
-- The command is expensive or long-running (multi-model consultation, full execution pipeline)
+- The command is expensive or long-running (adversarial consultation, full execution pipeline)
 - The command has non-obvious trigger conditions
 - The command overlaps with other commands and needs differentiation
 
-Write as a brief paragraph followed by a bullet list of specific triggers. Skip for commands with obvious invocation context.
+Write as a brief paragraph followed by a bullet list of specific triggers. Skip for commands with obvious invocation context (review a PR, implement a ticket).
 
 ## Constraints Section
 
@@ -95,7 +100,7 @@ Bold bullet points. Each constraint starts with `**NEVER**` or a strong directiv
 **Tool routing** - which tool families to use and which to avoid:
 
 ```markdown
-- **NEVER shell out to `opencode run` directly.** Always use the `oc_*` tools - they surface `sessionId` reliably; bash output parsing is fragile.
+- **NEVER use `gh` CLI for remote GitHub operations** (PR creation, PR reads, checks, reviews, merges, workflow dispatch). Always use `github_*` MCP tools. The only acceptable use of `gh` is local workspace operations like `gh pr checkout` to switch branches.
 ```
 
 **Scope boundaries** - what the command must not do:
@@ -108,13 +113,14 @@ Bold bullet points. Each constraint starts with `**NEVER**` or a strong directiv
 **Execution model** - how the command operates:
 
 ```markdown
-- Do not modify code, create commits, or push. This workflow is read-only.
+- Do not modify code, create commits, or push. This workflow is read-only (except for submitting the GitHub review).
 ```
 
 **Tool family declarations** - positive tool routing (what TO use):
 
 ```markdown
-- Use `oc_*` tools for dispatching consultations and reading session replies.
+- Use `github_*` tools for PR reads, comments, and thread resolution.
+- Use `jira_*` tools for ticket reads and status updates.
 - Use `codebase_*` tools for codebase discovery and impact analysis.
 - Read selectively - prefer `codebase_find_definition` / `codebase_trace_calls` over broad file reads to keep the context window healthy.
 ```
@@ -135,9 +141,9 @@ The core of every command. Each step is `## Step N - <Name>`.
 
 Step names are short, concrete, and describe the action - not the outcome.
 
-Good: `Step 1 - Load Skills`, `Step 2 - Resolve the Working Directory`, `Step 3 - Warm the Partner`
+Good: `Step 1 - Load Skills`, `Step 3 - Branch Prep`, `Step 7 - Resolve All Threads`
 
-Bad: `Step 1 - Preparation`, `Step 2 - Setup`, `Step 3 - Finish Up`
+Bad: `Step 1 - Preparation`, `Step 3 - Setup`, `Step 7 - Finish Up`
 
 ### Step internal structure
 
@@ -155,9 +161,9 @@ Each step follows this pattern (not all parts required):
 When a step must complete before the next can start, mark it explicitly:
 
 ```markdown
-## Step 2 - Resolve the Working Directory (Blocking Gate)
+## Step 3 - Branch Prep (Blocking Gate)
 
-This must complete before any dispatch.
+This must complete before any codebase analysis.
 ```
 
 Or inline:
@@ -180,9 +186,11 @@ Complex commands that involve code changes start with a skill loading step:
 Load the baseline skills:
 
 - `language-typescript`
+- `develop-tests`
 - `workflow-git-cli`
+- `develop-monorepo`
 
-Load additional skills as needed based on task scope.
+Load additional skills as needed based on ticket scope.
 ```
 
 The blocking gate annotation prevents the agent from starting analysis or implementation before conventions are loaded.
@@ -194,20 +202,21 @@ Show concrete tool invocations with real parameter names. Use the bare tool name
 Good:
 
 ```markdown
-Use `oc_get_session` with `isFromEnd: true, limit: 15`. Extract:
+Use `jira_get_issue` with `includeComments: true`. Extract:
 
-- the assistant's final reply
-- the session id for follow-up dispatches
+- acceptance criteria
+- technical scope
+- risks / breaking changes
 ```
 
 ```markdown
-Use `codebase_project_structure` with `maxDepth: 2` to detect the layout.
+Use `github_get_pr_checks` to check CI status on the PR.
 ```
 
 Bad:
 
 ```markdown
-Call the session tool to read the conversation. The tool accepts a session id parameter and an optional limit.
+Call the JIRA tool to read the ticket. The tool accepts an issue key parameter and an optional flag for comments.
 ```
 
 ### Shell commands
@@ -215,10 +224,11 @@ Call the session tool to read the conversation. The tool accepts a session id pa
 Use fenced code blocks with actual runnable commands. Include the working directory context when it matters:
 
 ```markdown
-Resolve the repository root, not the current subdirectory:
+Run tests from the app directory, not the monorepo root:
 
 \`\`\`bash
-git rev-parse --show-toplevel
+cd apps/<app>
+NODE_ENV=test npx vitest run
 \`\`\`
 ```
 
@@ -227,11 +237,11 @@ git rev-parse --show-toplevel
 Use markdown tables for routing decisions, classification, and conditional branching:
 
 ```markdown
-| Run state     | How to identify                     | Action                 |
-| ------------- | ----------------------------------- | ---------------------- |
-| Still running | `status: "running"`                 | Poll again later       |
-| Completed     | Terminal status, exit code 0        | Read the session reply |
-| Failed        | Terminal status, non-zero exit code | Surface the log tail   |
+| Thread state            | How to identify                     | Action         |
+| ----------------------- | ----------------------------------- | -------------- |
+| New - no resolver reply | Only reviewer comments              | Process as new |
+| Resolved - accepted     | Has resolver reply, thread resolved | Skip           |
+| Re-opened by reviewer   | Resolver reply + reviewer follow-up | Must address   |
 ```
 
 Tables are preferred over nested if/else prose for decisions with 3+ branches.
@@ -241,9 +251,9 @@ Tables are preferred over nested if/else prose for decisions with 3+ branches.
 When a step has 2-3 branches, use bold headers within the step:
 
 ```markdown
-**If the run completed cleanly - skip straight to Step 4.**
+**If the PR is clean (mergeable, no conflicts) - skip straight to Step 4.**
 
-**Only if the run failed**, read the log tail and diagnose:
+**Only if the PR is dirty/conflicted**, rebase to resolve:
 
 1. ...
 ```
@@ -257,7 +267,7 @@ Commands that accept user input document how to parse `$ARGUMENTS`.
 ### Simple case - single expected input
 
 ```markdown
-If `$ARGUMENTS` is provided, resolve it as the partner model token. Otherwise use the default model.
+If `$ARGUMENTS` is provided, use it as the JIRA ticket key. Otherwise ask the user for the ticket key (e.g. `CHRP-291`).
 ```
 
 ### Complex case - multiple tokens with classification
@@ -265,11 +275,12 @@ If `$ARGUMENTS` is provided, resolve it as the partner model token. Otherwise us
 Use a parsing table:
 
 ```markdown
-| Token shape   | Classification        | Examples                       |
-| ------------- | --------------------- | ------------------------------ |
-| Model alias   | **model**             | `fable`, `gpt-5.6-sol`         |
-| Session id    | **session**           | `ses_abc123...`                |
-| Absolute path | **working directory** | `/Users/you/IdeaProjects/repo` |
+| Token shape        | Classification   | Examples                          |
+| ------------------ | ---------------- | --------------------------------- |
+| Known command name | **sub-command**  | `review`, `implement`, `resolve`  |
+| GitHub PR URL      | **PR reference** | `https://github.com/.../pull/233` |
+| Bare number        | **PR number**    | `233`                             |
+| JIRA ticket key    | **ticket key**   | `CHRP-534`                        |
 ```
 
 Always include a fallback when arguments are missing or ambiguous: "If not provided, ask the user."
@@ -281,9 +292,9 @@ When the command can infer the sub-command from the argument shape, document the
 ```markdown
 If no known sub-command is found, infer from context:
 
-- Model alias -> use as the partner model
-- `ses_*` id -> continue that session
-- Absolute path -> use as the working directory
+- PR number or PR URL -> default to `review`
+- GitHub issue URL -> default to `comment`
+- JIRA ticket key -> default to `implement`
 - Nothing recognizable -> ask the user
 ```
 
@@ -296,19 +307,20 @@ Almost every command ends with a Report step. This tells the agent what to commu
 A bullet list of items to report, covering:
 
 - What was done (artifacts created, actions taken)
-- External references (session ids, file paths, branch names)
+- External references (PR URLs, JIRA ticket keys, deployment tags)
 - Status of each component (pass/fail, sent/skipped)
 - Warnings or blockers that need user attention
 
 ```markdown
-## Step 4 - Report
+## Step 11 - Report
 
 Report to the user:
 
-- session id
-- working directory the partner is rooted in
-- resolved model id
-- Final status: DONE with partner ready, or BLOCKED with blocker details
+- JIRA ticket key
+- Feature branch name
+- PR URL
+- JIRA status transition result
+- Final status: DONE with PR ready, or BLOCKED with blocker details
 ```
 
 ### Final status pattern
@@ -324,11 +336,11 @@ Include for commands with known failure modes that recur. Each entry has:
 - **Fix:** concrete steps to resolve
 
 ```markdown
-### Dispatch fails with an unknown model error
+### Migration picks up unintended column changes
 
-`oc_run` rejects un-prefixed model ids that are not claude models - nothing routes to a default runner silently.
+TypeORM's diff compares the entity model to the live DB. If entities were updated without a corresponding migration...
 
-**Fix:** Pass a provider-prefixed id (e.g. `openai/gpt-5.5`) or a bare claude id (e.g. `claude-fable-5`).
+**Fix:** Review every statement in the generated migration. Remove unrelated changes.
 ```
 
 Troubleshooting sections are living documentation - update them when new failure modes are discovered in practice.
@@ -342,9 +354,9 @@ Include for commands that have been iterated through real use. Each lesson is a 
 Bold heading describing the pattern, followed by 2-4 sentences of explanation.
 
 ```markdown
-### Warm the partner before the first real question
+### Slack context is often richer than the ticket
 
-A short "Hello" warm-up run establishes the session id cheaply. Dispatching the full briefing as the first call couples session creation with a long-running reply, so a dispatch failure costs the whole briefing instead of a two-second retry.
+JIRA tickets are written before the conversation is fully resolved. The Slack thread that produced the ticket often clarifies scope...
 ```
 
 This section is explicitly marked as a living document that gets updated during retrospectives.
@@ -354,25 +366,25 @@ This section is explicitly marked as a living document that gets updated during 
 Complex commands that involve multiple async operations include an explicit parallelization table:
 
 ```markdown
-| Operation                               | Parallel? | Notes                                  |
-| --------------------------------------- | --------- | -------------------------------------- |
-| Fanout consultations to multiple models | Yes       | Independent async runs, fresh sessions |
-| Sequential challenges on one session    | No        | Same `sessionId` must never interleave |
-| Codebase reads while a run is in flight | Yes       | Local reads are fully independent      |
+| Operation                          | Parallel? | Notes                             |
+| ---------------------------------- | --------- | --------------------------------- |
+| Reading tickets + Slack + GitHub   | Yes       | All reads, fully independent      |
+| Implementing multiple tickets      | No        | Sequential - one branch at a time |
+| Running review + implementing next | Yes       | Review is async, keep working     |
 ```
 
 Include this when the command involves 5+ operations and the parallel/sequential distinction is non-obvious.
 
 ## Reference Data
 
-When a command needs static reference data (test accounts, project IDs, environment URLs), put it in a clearly labeled table or section near the top - before the steps - so the agent has the data loaded before it needs it. Never inline real credentials - point at the secret store.
+When a command needs static reference data (test accounts, project IDs, environment URLs), put it in a clearly labeled table or section near the top - before the steps - so the agent has the data loaded before it needs it.
 
 ```markdown
 ## Test Accounts
 
-| Email                    | Password                | Role  |
-| ------------------------ | ----------------------- | ----- |
-| `demo-admin@example.com` | in the password manager | Admin |
+| Email                  | Password         | Role  |
+| ---------------------- | ---------------- | ----- |
+| `demo-admin@chirp.app` | `ChirpDemo2026!` | Admin |
 ```
 
 ## Webhook/Pipeline Commands
@@ -384,12 +396,12 @@ Commands invoked by hooks (not directly by users) need extra care:
 State explicitly how the command is triggered and what implicit context it receives:
 
 ```markdown
-This command is triggered automatically by the webhook listener when a tracked event fires.
+This command is triggered automatically by the webhook listener when a `*resolver:*` comment is posted on a tracked PR.
 ```
 
 ### Document side-effect boundaries
 
-When a command's output IS the side effect (e.g., the text response becomes a comment posted by the hook), explain the mechanism and warn against bypassing it:
+When a command's output IS the side effect (e.g., `comment.md` where the text response becomes a GitHub comment posted by the hook), explain the mechanism and warn against bypassing it:
 
 ```markdown
 Your text response IS the comment. The hook posts it for you with proper formatting. If you post directly, the comment will lack the bot marker and cause the hook to process its own output.
@@ -400,8 +412,8 @@ Your text response IS the comment. The hook posts it for you with proper formatt
 Commands in automated pipelines often need explicit tool blacklists to prevent infinite loops or unintended side effects:
 
 ```markdown
-- **NEVER post to the external service directly.** Do not call any tool that writes to the service the hook manages - the hook owns that side effect.
-- **NEVER create, merge, or dispatch anything the pipeline itself is responsible for.**
+- **NEVER post comments on GitHub directly.** Do not use `github_add_pr_comment`, `github_reply_to_review_comment`, or any tool that posts to GitHub.
+- **NEVER create PRs, merge, or dispatch workflows.**
 ```
 
 ## Anti-Patterns

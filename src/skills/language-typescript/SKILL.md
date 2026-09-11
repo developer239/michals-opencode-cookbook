@@ -25,6 +25,15 @@ When rules conflict, apply in this order:
 
 Do not invent a new local style when an existing style is already established.
 
+## Repository-Specific vs Neutral (Read First)
+
+Most of this skill is neutral TypeScript guidance that holds anywhere. A few sections pin to a stack that varies between the repos this skill serves - **discover the actual repo before applying a pinned name**, and read tagged guidance accordingly:
+
+- **Illustrative domain names.** Concrete identifiers in examples (`RoutineService`, `GoalType`, `UserId`, `EquipmentId`, `GoalNotFoundError`, cache keys like `lookups:equipment`, app names like `lambda-image-processing`) are placeholders to make a pattern concrete - not a catalog of any one product. Substitute the repo's real names.
+- **[TypeORM].** The `TypeORM Patterns` section and any rule naming entities, `QueryBuilder`, `EntityManager`, `dataSource.transaction`, `softDelete`, or `eager: true` applies to TypeORM repos. A Drizzle repo applies the same *principle* (parameterized queries, N+1 avoidance, transactions, deterministic ordering) with `drizzle-orm`'s query builder, `db.transaction()`, and `onConflictDoNothing`.
+- **Auth is explicit opt-in via a composite decorator; the decorator name varies.** These repos have no global auth guard and no `@Public()` opt-out - every protected controller/route carries an explicit composite decorator that wraps the auth guard + `@ApiBearerAuth()`. The name differs per repo: chirp uses `@UserOnly()` / `@AdminOnly()`; ask-angel uses `@JwtAuth()`. Auth examples below use one repo's names as a concrete instance; the neutral rule (protect each route explicitly with the repo's composite decorator, keep controllers thin, read the authenticated user via the repo's user decorator) is what holds. Do not introduce `@Public()`/`IS_PUBLIC_KEY`/a global guard - that model is not used here.
+- **[if present] capabilities.** Redis caching, `@nestjs/event-emitter`, an admin app, and specific vendor packages exist only in some repos. Their sections are tagged - apply only after confirming the repo has that capability. In particular, **the async-queue transport in these repos is AWS SQS, not BullMQ** - treat the BullMQ specifics as one concrete instantiation of transport-neutral worker principles.
+
 ## Language and Formatting Baseline
 
 - TypeScript strict mode is expected (`strict` family enabled).
@@ -314,7 +323,7 @@ Do not over-engineer template literal types for internal strings where a plain `
 Validate with Zod at every trust boundary where data enters the system:
 
 - API request bodies, query params, headers
-- Queue job payloads (BullMQ)
+- Queue/message payloads (e.g. SQS message bodies)
 - Webhook payloads from external services
 - Environment variables at startup
 - YAML/JSON config files loaded from disk
@@ -344,7 +353,7 @@ type IBodyAreaSymptom = z.infer<typeof BodyAreaSymptomSchema>
 const EnvSchema = z.object({
   PGHOST: z.string().default('localhost'),
   PGPORT: z.coerce.number().default(5432),
-  PGDATABASE: z.string().default('api_chirp_db'),
+  PGDATABASE: z.string().default('api_<project>_db'),
   REDIS_ENABLED: z.coerce.boolean().default(true),
 })
 const env = EnvSchema.parse(process.env)
@@ -378,15 +387,14 @@ const config = ConfigSchema.parse(rawConfig)
 
 ### Authentication and Authorization
 
-Controllers must use the established guard and decorator patterns:
-
-**Public endpoints (authenticated user):**
+Protection is **explicit and opt-in**: every protected controller (or route) carries a composite auth decorator that wraps the auth guard + `@ApiBearerAuth()`. There is no global guard and no `@Public()` in these repos - an unprotected route is simply one with no auth decorator. The decorator's name is repo-specific: **chirp** exposes `@UserOnly()` (and `@AdminOnly()` in its admin app); **ask-angel** exposes `@JwtAuth()`. Read a sibling controller and reuse whatever it uses - do not invent a new guard-stacking style.
 
 ```typescript
+// Concrete instance (chirp names shown). The decorator wraps
+// applyDecorators(UseGuards(<AuthGuard>), ApiBearerAuth()).
 @ApiTags('feature')
 @Controller('feature')
-@UseGuards(FirebaseAuthGuard)
-@ApiBearerAuth()
+@UserOnly() // ask-angel equivalent: @JwtAuth()
 export class FeatureController {
   @Get()
   public async list(@GetUser() user: IUserPayload): Promise<FeatureListResponse> {
@@ -395,35 +403,13 @@ export class FeatureController {
 }
 ```
 
-**Admin-only endpoints:**
+- Apply the composite decorator at the class level when every route shares the same protection, or per-method when a controller mixes protection levels (e.g. a public sign-in route beside protected routes) - follow the sibling controller's placement.
+- Prefer the repo's **composite** decorator (`@UserOnly()`/`@AdminOnly()`/`@JwtAuth()`) over hand-stacking `@UseGuards(...) @ApiBearerAuth()` on every controller - the composite is the single source of truth for the guard set.
+- Read the authenticated user via the repo's user decorator (`@GetUser()` → `IUserPayload` with `userId`/`uid`/`role`, or the repo's equivalent). Never re-parse the token in a controller.
 
-```typescript
-@ApiTags('admin')
-@Controller('admin/feature')
-@UseGuards(FirebaseAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
-@ApiBearerAuth()
-export class FeatureAdminController { ... }
-```
+### Admin Endpoints
 
-Key patterns:
-
-| Decorator/Guard                 | Source            | Purpose                                                            |
-| ------------------------------- | ----------------- | ------------------------------------------------------------------ |
-| `@UseGuards(FirebaseAuthGuard)` | `@workspace/auth` | Validates Firebase Bearer token                                    |
-| `@UseGuards(RolesGuard)`        | `@workspace/auth` | Enforces role-based access (used with `@Roles`)                    |
-| `@Roles(UserRole.ADMIN)`        | `@workspace/auth` | Declares required role                                             |
-| `@GetUser()`                    | `@workspace/auth` | Extracts `IUserPayload` from request (has `userId`, `uid`, `role`) |
-| `@ApiBearerAuth()`              | `@nestjs/swagger` | Swagger auth metadata                                              |
-
-### Admin/Public Controller Split
-
-When a module needs both user-facing and admin endpoints, create two controllers in the same module:
-
-- `<feature>.controller.ts` - public, `@Controller('feature')`, `@UseGuards(FirebaseAuthGuard)` only
-- `<feature>-admin.controller.ts` - admin, `@Controller('admin/feature')`, `@UseGuards(FirebaseAuthGuard, RolesGuard)` + `@Roles(UserRole.ADMIN)`
-
-Both registered in the module's `controllers: [FeatureController, FeatureAdminController]`.
+**[if present]** Admin exists only in repos that have an admin app/role, and its shape varies: chirp keeps admin in a **separate `apps/admin` app** whose modules register only admin controllers (guarded by `@AdminOnly()`), not a second controller inside the public module. Discover whether the repo has an admin app and follow its structure; do not add an admin controller to the public API app.
 
 ### DTOs
 
@@ -486,10 +472,10 @@ Infrastructure-level configs from `@workspace/*` packages (e.g., `databaseConfig
 
 ### NestJS Interceptors, Pipes, and Guards - Composition Rules
 
-- Apply guards at the controller class level (not per-method) unless a single method has different auth requirements.
+- Apply the repo's composite auth decorator at the controller class level when every route shares protection; apply per-method when a controller mixes protection levels.
 - Use global pipes (`ValidationPipe`) via `app.useGlobalPipes()` for DTO validation - do not repeat `@UsePipes()` on individual endpoints.
 - Use interceptors for cross-cutting concerns (logging, response transformation, timeout). Keep interceptor logic stateless; inject services if needed.
-- When composing multiple guards, order matters - authentication guards run before authorization guards: `@UseGuards(FirebaseAuthGuard, RolesGuard)`.
+- When a repo composes multiple guards, order matters - authentication runs before authorization (an auth guard before a roles guard). The repo's composite decorator already encodes the correct order; reuse it rather than re-stacking guards by hand.
 - Do not put business logic in interceptors or pipes. These are infrastructure concerns only.
 - **Prefer explicit opt-in over global registration** for feature-level interceptors. Wrap in a composite decorator and apply at the controller class level. Global interceptor registration is appropriate only for true infrastructure (logging, error handling), not feature behavior.
 
@@ -554,7 +540,7 @@ Pick one construction convention and keep it: prefer `new X(entity)`; use `X.fro
 
 ### Redis Caching Pattern
 
-Services that cache data follow a read-through pattern:
+**[if present]** Only in repos with a Redis package/cache layer. Services that cache data follow a read-through pattern:
 
 ```typescript
 public async getData(id: string): Promise<TData> {
@@ -571,7 +557,7 @@ public async getData(id: string): Promise<TData> {
 }
 ```
 
-Cache keys are defined in `apps/api/src/shared/cache.constants.ts`. Workers and webhooks invalidate these keys after writes.
+Cache keys are defined in a single canonical constants file in the shared-domain contracts package (discover its actual path, e.g. a `cache/` subdir). Workers and webhooks invalidate these keys after writes.
 
 ### Cache Invalidation Strategies
 
@@ -639,7 +625,7 @@ Controllers and queue processors are the error boundary - they catch domain erro
 
 ### Result Types (Optional - Evaluate for New Projects)
 
-> **Industry note:** The `neverthrow` library provides a `Result<T, E>` type that makes errors explicit in function signatures, preventing forgotten error handling. This is gaining traction in production TypeScript codebases (as of 2025). It aligns well with the existing codebase's C++ pattern of `std::expected<T, E>`. Consider adopting for new services or modules where typed error propagation across service boundaries would reduce error-handling bugs. Do not retrofit into existing NestJS services that already use throw-based patterns - the migration cost is high and NestJS exception filters expect thrown errors.
+> **Industry note:** The `neverthrow` library provides a `Result<T, E>` type that makes errors explicit in function signatures, preventing forgotten error handling. This is gaining traction in production TypeScript codebases (as of 2025). It aligns with the `std::expected<T, E>` pattern used in some sibling codebases in this org. Consider adopting for new services or modules where typed error propagation across service boundaries would reduce error-handling bugs. Do not retrofit into existing NestJS services that already use throw-based patterns - the migration cost is high and NestJS exception filters expect thrown errors.
 
 If adopting `neverthrow`, wrap third-party calls (DB, Redis, HTTP) in `try/catch` at the infrastructure boundary and return `Result` from there:
 
@@ -722,13 +708,15 @@ const getData = (id: string): Promise<IData> => {
 
 Exception: keep `async` when you need `try/catch` around the awaited call, or when the function has multiple `await` statements.
 
-## Queue and Worker Patterns (BullMQ)
+## Queue and Worker Patterns
+
+The principles here (minimal payloads, idempotency, backoff, DLQ, graceful shutdown) are transport-neutral. **The async transport in these repos is AWS SQS** (standard queues, not FIFO); any BullMQ-style example is one concrete instantiation - map it to SQS (redrive-policy DLQ, visibility-timeout retries, per-record batch failures). Keep the underlying rules regardless of transport.
 
 ### Job Design
 
 - Job payloads must be JSON-serializable - no class instances, no functions, no circular references.
 - Keep payloads minimal - include IDs and metadata, not full entity objects. Let the worker fetch fresh data.
-- Use a stable `jobId` for natural idempotency keys (e.g., `welcome-email:${userId}`) to prevent duplicate processing.
+- Guarantee idempotency at the application layer so a redelivered message does not double-process (a DB unique key / events table, or a completion flag checked before side effects). Note: these repos use **standard** SQS queues, which do NOT deduplicate - native `MessageDeduplicationId` exists only on FIFO queues, which neither repo uses. Do not rely on transport-level dedup.
 
 ### Idempotency
 
@@ -742,16 +730,15 @@ Workers and webhook handlers must be idempotent. The same job or event processed
 
 ### Retry and Backoff
 
-- Use exponential backoff for retries: `{ attempts: 3, backoff: { type: 'exponential', delay: 1000 } }`.
-- Set reasonable `attempts` limits - infinite retries flood the queue.
-- Route permanently failed jobs to a dead letter queue (DLQ) via `@OnWorkerEvent('failed')` after max retries exhausted.
-- Use `removeOnComplete` and `removeOnFail` options to prevent Redis memory bloat from completed/failed job records.
+- Use bounded retries with backoff - never infinite retries. On SQS this is the queue's `maxReceiveCount` + visibility timeout (a message reappears after the timeout and is retried until the receive count is exceeded); a BullMQ-style broker expresses the same idea as `{ attempts, backoff }`.
+- Route permanently failed messages to a dead-letter queue after the retry limit. On SQS this is the source queue's redrive policy pointing at a DLQ; do not hand-roll a "give up" branch that silently drops the message.
+- Report per-record success/failure so the transport only redelivers the records that actually failed (e.g. SQS partial-batch failure via `processSqsBatch`), rather than reprocessing an entire batch on one bad record.
 
 ### Graceful Shutdown
 
-- Use `onModuleDestroy` lifecycle hook to close worker connections cleanly.
-- Listen for `SIGINT` and `SIGTERM`; let in-flight jobs complete before exiting.
-- Do not use `SIGKILL` in orchestration (Kubernetes, PM2) - give workers a grace period.
+- Stop the consumer/worker from accepting new messages on shutdown, then let in-flight work finish. The call is transport-specific (`consumer.stop()` for an `sqs-consumer` loop; `worker.close()` for a BullMQ worker) - use the one the repo's queue package exposes, typically from an `onModuleDestroy` hook.
+- Listen for `SIGINT` and `SIGTERM`; let in-flight work complete before exiting.
+- Do not use `SIGKILL` in orchestration (Kubernetes, ECS, PM2) - give workers a grace period.
 
 ### Separation of Concerns
 
@@ -766,7 +753,7 @@ Workers and webhook handlers must be idempotent. The same job or event processed
 - Comments explain "why", not "what". Avoid comments that restate code.
 - Complex logic has explanatory comments or is broken into named steps.
 - No `@ts-ignore` or `@ts-expect-error`; fix the underlying type issue instead.
-- No `oxlint-disable` unless there is a documented, unavoidable reason inline.
+- No `eslint-disable` unless there is a documented, unavoidable reason inline.
 
 ## Testing Alignment
 
@@ -797,13 +784,13 @@ Workers and webhook handlers must be idempotent. The same job or event processed
 Choose the right tool for the job:
 
 - **Direct method call** (default) - for synchronous, in-process communication between services within the same module.
-- **BullMQ queues** - for async fire-and-forget work that needs retry, backoff, rate limiting, or must survive process restarts. Use for image processing, email sending, webhook delivery.
-- **Redis Pub/Sub** - for real-time fan-out notifications where message loss is acceptable (e.g., cache invalidation broadcasts across API instances).
-- **NestJS `EventEmitter2`** (`@nestjs/event-emitter`) - for in-process event-driven decoupling where you want multiple listeners to react to a single action without the producer knowing about them. Appropriate for analytics tracking, audit logging, secondary effects.
+- **A durable message queue** - for async fire-and-forget work that needs retry, backoff, DLQ, or must survive process restarts (image processing, email, webhook delivery). In these repos that transport is **AWS SQS**; other stacks use BullMQ/Redis.
+- **[if present] Redis Pub/Sub** - real-time fan-out where message loss is acceptable (e.g. cache-invalidation broadcasts). Only where a Redis layer exists.
+- **[if present] NestJS `EventEmitter2`** (`@nestjs/event-emitter`) - in-process decoupling so multiple listeners react to one action without the producer knowing. Only where the event-emitter is registered (chirp has it; ask-angel does not).
 
 #### In-Process Event Conventions
 
-Domain events decouple core business logic from side effects (analytics, notifications, audit logging). The pattern:
+**[if present]** Applies only to repos that register `@nestjs/event-emitter`. A repo without it calls side-effect services directly (still keeping transactional side effects inline - see the constraint below). Domain events decouple core business logic from side effects (analytics, notifications, audit logging). The pattern:
 
 1. **Define typed events** with `as const` event name constants and typed payload interfaces
 2. **Emit from domain services** after core state transitions - emitting service does NOT import side-effect services
@@ -839,7 +826,7 @@ The shutdown sequence:
 1. Stop accepting new requests/jobs.
 2. Wait for in-flight requests/jobs to complete (with a timeout).
 3. Close database connection pools.
-4. Close Redis connections.
+4. Close other connections that are present (Redis, queue consumers, etc.).
 5. Exit.
 
 NestJS `OnModuleDestroy` and `BeforeApplicationShutdown` lifecycle hooks handle steps 2-4 when `enableShutdownHooks()` is called. Ensure every provider that holds a connection implements the appropriate hook.
@@ -847,7 +834,7 @@ NestJS `OnModuleDestroy` and `BeforeApplicationShutdown` lifecycle hooks handle 
 ### Health Checks
 
 - Expose `/ping` (or `/health`) for load balancer probes - return 204 with no body.
-- For richer health checks, verify connectivity to critical dependencies (database, Redis, queue broker) and return a structured response with per-dependency status.
+- For richer health checks, verify connectivity to the critical dependencies the app actually has (database, and where present Redis / the queue) and return a structured response with per-dependency status.
 - Keep health check handlers fast - they are called frequently. Do not run expensive queries.
 
 ## Code Quality Principles
@@ -882,6 +869,8 @@ NestJS `OnModuleDestroy` and `BeforeApplicationShutdown` lifecycle hooks handle 
 
 ### TypeORM Patterns
 
+**[TypeORM]** This entire subsection is TypeORM-specific (`QueryBuilder`, `EntityManager`, `softDelete`, `eager`, `dataSource.transaction`, PG error-code catches). In a **Drizzle** repo the same goals - parameterized queries, no N+1, explicit relation loading, transactional multi-writes, unique-violation handling - are achieved with `drizzle-orm`'s query builder, `db.transaction()`, and `.onConflictDoNothing()`/`.onConflictDoUpdate()`. Soft-delete is a convention, not a built-in: if (and only if) the Drizzle schema adopts a `deletedAt` column, filter it explicitly in every read and back uniqueness with a partial index `WHERE deleted_at IS NULL`. Read the principle, then use your ORM's idiom.
+
 - Prefer QueryBuilder over raw SQL for type-safe, composable queries. Use raw SQL only for performance-critical queries where QueryBuilder overhead is measurable.
 - Use `.select()` to fetch only needed columns in read-heavy paths.
 - For relations, use explicit `leftJoinAndSelect` or `loadRelationCountAndMap` - do not rely on `eager: true` entity configuration (it causes implicit N+1 on every query).
@@ -902,7 +891,8 @@ if (hasVoted) {
 try {
   await manager.save(VoteEntity, { profileId, label, votedDate: today })
 } catch (error: unknown) {
-  if (error instanceof QueryFailedError && (error as any).code === '23505') {
+  // Narrow instead of `as any` - QueryFailedError carries the driver error.
+  if (error instanceof QueryFailedError && isUniqueViolation(error)) {
     throw new ConflictException('Already voted today')
   }
   throw error
@@ -966,7 +956,7 @@ Things that look like cleanup but silently flip the contract:
 
 If any of these would change the output for a given input, the extraction is no longer behaviour-preserving and the test suite that pins downstream order has to change with it. That is acceptable but it is no longer a refactor - it is a behavioural change in disguise.
 
-Rule: copy the body, keep the `// oxlint-disable` comments that flagged the intentional-bit-twiddling, do not "tidy." If a cleaner algorithm is genuinely better, propose it as a separate behavioural-change commit with the test suite updated to match the new permutation.
+Rule: copy the body, keep the `// eslint-disable` comments that flagged the intentional-bit-twiddling, do not "tidy." If a cleaner algorithm is genuinely better, propose it as a separate behavioural-change commit with the test suite updated to match the new permutation.
 
 ### Inline one-call wrappers
 
@@ -1028,34 +1018,33 @@ A typed input is the right call when ALL of these hold:
 2. The parameter list is heterogeneous: a mix of IDs, dates, arrays, numeric
    thresholds, and option flags. Same-typed positional args (e.g. three `string`
    IDs) are the trap a typed input prevents.
-3. The internal positional binding is non-obvious. The two community-tier
-   queries in `activity-card` are the worked example: same TypeScript argument
-   list, but each method binds those args to _different_ SQL `$N` placeholder
-   positions internally. A renamed positional call site silently passes the
-   wrong value; a named input cannot.
+3. The internal positional binding is non-obvious. The worked example: two sibling
+   ranking queries take the same TypeScript argument list, but each binds those
+   args to _different_ SQL `$N` placeholder positions internally. A renamed
+   positional call site silently passes the wrong value; a named input cannot.
 
 ```typescript
 // ✅ typed input at a repository boundary - heterogeneous params,
 //    same shape feeds two methods that bind positions differently
-export interface ICommunityActivitiesInput {
-  currentProfileId: string
-  expandedBodyAreaIds: string[]
+export interface IRankedCandidatesInput {
+  currentUserId: string
+  expandedCategoryIds: string[]
   lookbackDate: Date
-  loggedToday: string[]
-  excludeOptionIds: string[]
-  minProfiles: number
+  seenToday: string[]
+  excludeIds: string[]
+  minCount: number
   limit: number
 }
 
-public findCommunityPopularActivities(
-  input: ICommunityActivitiesInput,
-): Promise<ICommunityPopularProjection[]> {
+public findTopRankedCandidates(
+  input: IRankedCandidatesInput,
+): Promise<IRankedCandidateProjection[]> {
   // SQL keeps positional $N; the public boundary is named.
 }
 ```
 
 The rule of thumb: if dropping the wrapper would force you to add
-`// oxlint-disable-next-line max-params` to call sites, the typed input is
+`// eslint-disable-next-line max-params` to call sites, the typed input is
 not a wrapper - it is the contract. Keep it.
 
 ### Passthrough methods - merge when public only packs params for a private method
@@ -1214,7 +1203,7 @@ if (!hasPermission(user)) {
 // ❌
 // @ts-ignore
 // @ts-expect-error
-// oxlint-disable-next-line typescript/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const data: any = value
 
 // ✅ fix the actual problem
@@ -1232,14 +1221,14 @@ if (isUser(data)) { ... }
 
 ### Injection Prevention
 
-- Never interpolate user input into SQL strings - use parameterized queries (TypeORM handles this by default).
+- Never interpolate user input into SQL strings - use parameterized queries (both TypeORM and Drizzle parameterize by default; the risk is raw string-built SQL).
 - Never interpolate user input into shell commands - use `child_process.execFile` (not `exec`) with argument arrays.
 - Never interpolate user input into template strings that become HTML - use a templating engine with auto-escaping.
 
 ### JWT and Auth Token Handling
 
 - Never log JWTs or auth tokens.
-- Validate JWT expiry, issuer, and audience on every request (Firebase Auth guard handles this).
+- Validate JWT expiry, issuer, and audience on every request (the repo's auth guard, e.g. a Firebase guard, handles this).
 - Do not store tokens in Redis or database unless absolutely necessary (and with encryption at rest).
 
 ### SSRF Prevention
@@ -1340,9 +1329,9 @@ At least once during every refactor session, run `codebase_find_unused_symbols` 
 ### Database Schema Evolution
 
 - One logical change per migration. Do not bundle unrelated schema changes.
-- Always write `down` migrations - they must cleanly reverse the `up`.
-- Backward-compatible changes: add nullable columns first, backfill data, then add constraints in a follow-up migration. This allows rollback without data loss.
-- Never rename columns in a single migration - add new column, backfill, update application code, remove old column in a subsequent release.
+- **[TypeORM]** write a `down` method that cleanly reverses the `up`. **[Drizzle]** migrations are generated forward-only `.sql` files with no `down` - reversal is a new forward migration; do not hand-add a down step.
+- Backward-compatible changes: add nullable columns first, backfill data, then add constraints in a follow-up migration. This allows rollback without data loss. (ORM-neutral.)
+- Never rename columns in a single migration - add new column, backfill, update application code, remove old column in a subsequent release. (ORM-neutral.)
 - Feature-flag schema changes when the new schema serves a feature that may be rolled back.
 
 ### Zero-Downtime Deploys
@@ -1360,9 +1349,9 @@ At least once during every refactor session, run `codebase_find_unused_symbols` 
 - broad lint-disable blocks with no reason
 - unnecessary local barrels
 - stale TODOs after refactor completion
-- putting admin endpoints on the public controller
-- omitting `@UseGuards(FirebaseAuthGuard)` on controller classes
-- omitting `@GetUser()` when the service needs the authenticated user's ID
+- putting admin endpoints on the public controller (in repos with an admin split)
+- leaving a controller's auth implicit - every controller must declare its protection with the repo's actual auth guard/decorator
+- omitting the authenticated-user decorator (`@GetUser()` or the repo's equivalent) when the service needs the user's ID
 - magic strings or numbers; extract into named constants
 - using `any` instead of `unknown` + narrowing
 - `function` declarations instead of arrow functions
@@ -1385,7 +1374,7 @@ At least once during every refactor session, run `codebase_find_unused_symbols` 
 - split type files for one pipeline: config types, data types, and error types for the same domain scattered across 3+ files when they could be 1-2 files
 - widening existing domain enums or named type aliases to anonymous `string`/`number` types
 - no single-line `if` statements (including `return`, `throw`, `continue`, `break`); always use braces and multiline blocks
-- no escape hatches: no `@ts-ignore`, no `@ts-expect-error`, no `oxlint-disable`, no `any`
+- no escape hatches: no `@ts-ignore`, no `@ts-expect-error`, no `eslint-disable`, no `any`
 - no SQL/ORM N+1 query patterns
 - no multi-write operations without a transaction boundary
 - no injection-prone patterns (SQL/NoSQL/command/template)
@@ -1423,30 +1412,34 @@ Apply this section only when all are true:
 
 ### Apps (Feature Modules)
 
-Use predictable module layout:
+Use predictable module layout (match the nearest existing module):
 
 - `dto/`
-- `entities/`
 - `repositories/`
 - `services/`
 - `<feature>.controller.ts`
-- `<feature>-admin.controller.ts` (when admin endpoints exist)
+- `<feature>-admin.controller.ts` **[if present]** (only when the repo has an admin app/role)
 - `<feature>.module.ts`
 - `<feature>.enums.ts` (or shared types)
 - `_tests/`
+
+An `entities/` folder appears **[TypeORM]** only; a Drizzle repo defines its model in the shared-domain schema package, not per-feature-module entities.
 
 ### Feature Module Wiring
 
 ```typescript
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Entity1, Entity2]), // Entity registration
+    // [TypeORM] register entities; [Drizzle] omit - the DB handle is global:
+    TypeOrmModule.forFeature([Entity1, Entity2]),
     ConfigModule.forFeature(featureConfig), // Module-scoped config (optional)
-    StorageModule.forRootAsync(), // Infrastructure (when needed)
-    QueueModule.forRootAsync({ queues: [QUEUES.NAME] }), // Queue (when enqueuing jobs)
-    MediaModule, // Shared utility modules
+    // The next imports are [if present] - include only what this repo/module has:
+    StorageModule.forRootAsync(), // [if present] object storage
+    QueueModule.forRootAsync({ queues: [QUEUES.NAME] }), // [if present] async queue
+    MediaModule, // shared utility module (example)
     PeerModule, // Cross-module imports are normal
   ],
+  // FeatureAdminController / AdminFeatureService are [if present] - admin repos only:
   controllers: [FeatureController, FeatureAdminController],
   providers: [FeatureService, FeatureRepository, AdminFeatureService],
   exports: [FeatureService, FeatureRepository], // Only what others need
@@ -1456,31 +1449,13 @@ export class FeatureModule {}
 
 ### Shared Types Across Apps
 
-Some types are manually duplicated between apps (API + worker, API + webhook) with a comment:
+A type needed by more than one app goes in the **shared-domain workspace package** so there is one definition and drift is caught at compile time. This is the default and what these repos do - do not create per-app copies under `apps/<app>/src/shared/`.
 
-```typescript
-// This file must be identical in:
-// - apps/api/src/shared/image-job.types.ts
-// - apps/worker-image/src/shared/image-job.types.ts
-```
-
-When modifying shared types, update **all copies**. These live in `apps/<app>/src/shared/`.
-
-Known duplicated type files:
-
-- `apps/api/src/shared/image-job.types.ts` ↔ `apps/worker-image/src/shared/image-job.types.ts`
-- `apps/api/src/shared/subscription-event.types.ts` ↔ `apps/webhook-revenue-cat/src/shared/subscription-event.types.ts`
-
-> **Industry note:** The industry standard for cross-app type sharing in monorepos is a shared `packages/shared-types` (or similar) workspace package. This eliminates manual duplication and ensures type drift is caught at compile time. Consider migrating when the number of duplicated type files exceeds 3-4 or when drift-related bugs occur.
+If you encounter a legacy manually-duplicated type (the same shape copied into two apps with a "keep identical" comment), treat it as debt: update every copy in the same change (grep the repo for the type name to find them all), and prefer migrating it into the shared-domain package rather than perpetuating the duplication.
 
 ### Cache Key Contracts
 
-Cache keys defined in `apps/api/src/shared/cache.constants.ts` are referenced by:
-
-- Worker apps (YAML config `cacheKey` values must match)
-- Webhook apps (Redis key patterns in cache invalidation code must match)
-
-When renaming cache keys, verify all three surfaces: API constants, worker YAML config, webhook invalidation code.
+**[if present]** Only in repos with a cache layer. Cache keys defined in the shared-domain contracts cache module are referenced by every app that reads or invalidates them (workers via config, webhooks via invalidation code). When renaming a cache key, verify all surfaces that reference it (API constants, any worker/webhook config, invalidation code) so keys do not drift.
 
 ### Packages Exports and Imports
 
