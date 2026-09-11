@@ -1,16 +1,15 @@
 # Michal's OpenCode Cookbook
 
-A shareable agentic setup for [OpenCode](https://opencode.ai) and Claude Code from a single codebase: plugins, skills, commands, and global agent instructions, written once and installed into both.
+A shareable agentic setup for [OpenCode](https://opencode.ai) and Claude Code from a single codebase: plugins, skills, commands, and global agent instructions.
+
+Written once and use everywhere.
 
 ## Multi-provider orchestration
 
-`/pair-program` opens a thinking-partner session against any model (GPT, Claude, or another provider) from either harness, dispatched locally through the `opencode`/`claude` CLIs already on the host - no control plane, no containers. Keep talking to the same session, switching models mid-thread, for the rest of the task.
+`/pair-program` opens an adversarial thinking-partner session against any model (GPT, Claude, or another provider) from either harnes.
 
 ![A Claude Code session and an OpenCode session side by side, both running the same project-structure tool](docs/images/multi-provider-dispatch.png)
 *Claude Code dispatches a GPT-5.5 agent to redo what OpenCode just did natively, then switches that same session to a different model.*
-
-![Terminal output of tree and cloc on an early prototype, showing four TypeScript files totaling 261 lines](docs/images/bridge-footprint.png)
-*The bridge stays small - an early prototype ran four TypeScript files, 261 lines total.*
 
 ## How to run it
 
