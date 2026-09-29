@@ -1,0 +1,1 @@
+This session was just compacted, but no handoff file was found for it (expected under {{handoffDir}}). The pre-compact writer may have failed, or this is the session's first compaction since the hook was installed. Re-check `git status`, recover context from the transcript at {{transcriptPath}}, and proceed carefully.

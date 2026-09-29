@@ -102,6 +102,93 @@ manifest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8'
 print(f'Wrote manifest: {manifest_path}')
 PY
 
+# Auto-compaction follows the shared compaction policy's anthropic entry:
+# autoCompactWindow is its token count, which Claude Code caps at each model's
+# context so a smaller model compacts as late as its own window allows (max
+# leaves autoCompactWindow unset, so every model does), and autoCompactEnabled
+# mirrors compaction.auto in the OpenCode config the OpenCode installer wrote.
+# The same pass also merges the two handoff-compaction hooks (PreCompact,
+# SessionStart) into settings.json.
+# shellcheck source=compaction-policy.sh
+source "$SCRIPT_DIR/compaction-policy.sh"
+COMPACTION_CLI_PATH="$PROJECT_ROOT/dist/modules/compaction/cli.js"
+WRITER_TIMEOUT_SECONDS=$((PRE_COMPACT_TIMEOUT_SECONDS - WRITER_TIMEOUT_MARGIN_SECONDS))
+python3 - "$HOME/.config/opencode/opencode.json" "$CLAUDE_HOME/settings.json" \
+  "$COMPACTION_CLI_PATH" "$COMPACTION_WRITER_MODEL" "$COMPACTION_WRITER_CONTEXT_TOKENS" \
+  "$PRE_COMPACT_TIMEOUT_SECONDS" "$WRITER_TIMEOUT_SECONDS" "${COMPACT_AT_TOKENS_BY_PROVIDER[@]}" <<'PY'
+import json
+import shlex
+import sys
+from pathlib import Path
+
+opencode_config_path = Path(sys.argv[1])
+settings_path = Path(sys.argv[2])
+compaction_cli_path = sys.argv[3]
+writer_model = sys.argv[4]
+writer_context_tokens = int(sys.argv[5])
+pre_compact_timeout = int(sys.argv[6])
+writer_timeout = int(sys.argv[7])
+
+compact_at_by_provider = {}
+for entry in sys.argv[8:]:
+    provider, _, value = entry.partition('=')
+    if provider == '' or not (value == 'max' or value.isdigit()):
+        sys.exit(f'compaction policy entry must be <provider>=<tokens|max>, got: {entry}')
+    compact_at_by_provider[provider] = value if value == 'max' else int(value)
+if 'anthropic' not in compact_at_by_provider:
+    sys.exit('the compaction policy must list anthropic, the provider Claude Code runs')
+compact_at = compact_at_by_provider['anthropic']
+
+if not opencode_config_path.exists():
+    sys.exit(f'{opencode_config_path} not found - run pnpm run symlink:opencode first; auto-compaction follows it')
+auto = json.loads(opencode_config_path.read_text(encoding='utf-8')).get('compaction', {}).get('auto')
+if not isinstance(auto, bool):
+    sys.exit(f'{opencode_config_path} must set compaction.auto')
+
+settings = json.loads(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else {}
+settings['autoCompactEnabled'] = auto
+if compact_at == 'max':
+    settings.pop('autoCompactWindow', None)
+else:
+    settings['autoCompactWindow'] = compact_at
+
+# The two handoff-compaction hooks: PreCompact writes a handoff just before
+# compaction runs, SessionStart (matcher "compact") tells the resumed session
+# to read it. Only a hook group whose command names this cli.js is replaced;
+# every other hook the owner configured, on these events or others, is kept.
+def is_ours(group):
+    return any(compaction_cli_path in hook.get('command', '') for hook in group.get('hooks', []))
+
+hooks = settings.setdefault('hooks', {})
+
+pre_compact = [group for group in hooks.get('PreCompact', []) if not is_ours(group)]
+pre_compact.append({
+    'matcher': '',
+    'hooks': [{
+        'type': 'command',
+        'command': f'node {compaction_cli_path} pre-compact --writer-model {shlex.quote(writer_model)} '
+                   f'--writer-context-tokens {writer_context_tokens} --writer-timeout-seconds {writer_timeout}',
+        'timeout': pre_compact_timeout,
+    }],
+})
+hooks['PreCompact'] = pre_compact
+
+session_start = [group for group in hooks.get('SessionStart', []) if not is_ours(group)]
+session_start.append({
+    'matcher': 'compact',
+    'hooks': [{'type': 'command', 'command': f'node {compaction_cli_path} session-start'}],
+})
+hooks['SessionStart'] = session_start
+
+settings_path.write_text(json.dumps(settings, indent=2) + '\n', encoding='utf-8')
+print(f"  settings autoCompactEnabled {settings['autoCompactEnabled']}, "
+      f"autoCompactWindow {settings.get('autoCompactWindow', 'unset (each model compacts at its own window)')}")
+print(f'  hooks    PreCompact -> {compaction_cli_path} pre-compact --writer-model {shlex.quote(writer_model)} '
+      f'--writer-context-tokens {writer_context_tokens} --writer-timeout-seconds {writer_timeout} '
+      f'(hook timeout {pre_compact_timeout}s)')
+print(f'  hooks    SessionStart (compact) -> {compaction_cli_path} session-start')
+PY
+
 if ! command -v claude >/dev/null 2>&1; then
   echo "claude CLI not found on PATH - register the MCP server manually:" >&2
   echo "  claude mcp add --scope user opencode -- node $SERVER_PATH" >&2

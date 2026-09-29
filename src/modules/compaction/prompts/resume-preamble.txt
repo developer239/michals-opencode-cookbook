@@ -1,0 +1,7 @@
+This session was just compacted. Before continuing:
+
+1. Read the handoff written just before compaction, at {{handoffPath}}.
+2. If anything in the handoff needs the exact original wording, it is still in the transcript at {{transcriptPath}} - the compaction marker keeps everything before it intact.
+3. Re-check `git status` and re-read any file the handoff says was mid-edit; the tree may have moved since the handoff was written.
+4. Reload the skills the handoff says were in use - a compaction re-injects only up to 5 recently modified files and 5,000 tokens per skill, so a longer skill needs reloading in full.
+5. Then

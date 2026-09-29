@@ -255,7 +255,14 @@
     ],
     "typescript/parameter-properties": "off",
     "typescript/await-thenable": "error",
-    "typescript/no-floating-promises": "error",
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "allowForKnownSafeCalls": [
+          { "from": "package", "package": "node:test", "name": ["describe", "it", "suite", "test"] }
+        ]
+      }
+    ],
     "typescript/no-misused-promises": "error",
     "typescript/no-for-in-array": "error",
     "typescript/no-unnecessary-qualifier": "error",
@@ -329,6 +336,15 @@
       }
     },
     {
+      "files": ["scripts/**/*.js"],
+      "rules": {
+        "no-console": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off"
+      }
+    },
+    {
       "files": ["lint/**/*.mjs"],
       "rules": {
         "import/no-default-export": "off",
@@ -338,6 +354,19 @@
         "typescript/no-unsafe-member-access": "off",
         "typescript/no-unsafe-return": "off",
         "typescript/strict-boolean-expressions": "off"
+      }
+    },
+    {
+      "files": ["src/**/*.spec.ts"],
+      "rules": {
+        "typescript/no-floating-promises": [
+          "error",
+          {
+            "allowForKnownSafeCalls": [
+              { "from": "package", "name": ["describe", "it"], "package": "node:test" }
+            ]
+          }
+        ]
       }
     }
   ]

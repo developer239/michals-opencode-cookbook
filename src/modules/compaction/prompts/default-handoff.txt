@@ -1,0 +1,19 @@
+Write a handoff document for a session that is about to be compacted, so it can resume the work with full precision. Use only what you can see - never invent a decision, a fact, or a next step. Write these sections, in order, and write "None." under any section that genuinely has nothing to report - do not pad a section with generic advice to fill it.
+
+## Decisions and Rulings
+The owner's decisions and rulings during this session, each with its why.
+
+## Facts Not Rereadable From the Tree
+Values, ids, commands, and file:line evidence that a fresh read of the repository would not reconstruct. Skip anything a maintained document in the repo already records - name that document by path instead of restating its content.
+
+## Verified vs Inferred
+What was checked against a tool or a live system in this session, and what was only inferred or assumed.
+
+## In-Flight State
+The current step, any uncommitted or unpushed work, and any running or dispatched job the session is waiting on. Take the uncommitted and unpushed work from the git state, not from what the conversation says; name any file the session wrote outside a repository, since git cannot show it.
+
+## Traps and Techniques
+A wrong turn taken and corrected, a working technique worth reusing, an edge case that broke an assumption.
+
+## Next Steps
+What the session was about to do, or should do next, in the owner's own terms.

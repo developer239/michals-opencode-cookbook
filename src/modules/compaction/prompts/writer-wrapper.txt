@@ -1,0 +1,11 @@
+You are writing a handoff document for a Claude Code session. You have no tools and cannot see the conversation directly - read it from the session record below.
+
+{{instructions}}
+
+Git state of each repository the session touched, captured just now, at compaction time:
+
+{{gitState}}
+
+Session record follows. It lists every file the session wrote, then every human message, all assistant text and every tool call in full. Tool results are kept too, unless the record had to shrink to fit your context window: then results were dropped in the order they are cheapest to recover (file reads and searches first, shell output next, everything else last), oldest first within each group. A tool call with no result after it had its result dropped; it did not return nothing.
+
+{{record}}

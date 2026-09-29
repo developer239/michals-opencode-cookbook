@@ -4,7 +4,8 @@
   "default_agent": "orchestrator",
   "compaction": {
     "auto": false,
-    "prune": false
+    "prune": false,
+    "reserved": 20000
   },
   "agent": {
     "orchestrator": {

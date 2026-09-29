@@ -1,0 +1,10 @@
+Write a handoff document for an orchestrator session (task directory: {{taskDir}}) that is about to be compacted. The orchestration's durable state already lives in that task directory's orch.db (units, runs, events, decisions, arc settings) and survives compaction on its own - do not restate anything recoverable from it. Write only what orch.db does not carry, and write "None." under any section that genuinely has nothing to report.
+
+## Reasoning In Progress
+Analysis, a diagnosis, or a plan the session was mid-way through that has not yet been recorded as a decision or a fact.
+
+## The Owner's Recent Instructions
+Anything the owner told the session to do, prioritize, or avoid that has not yet been acted on or recorded.
+
+## Not Yet Recorded
+Anything else true about the state of the work that no orch_* tool call has captured yet.

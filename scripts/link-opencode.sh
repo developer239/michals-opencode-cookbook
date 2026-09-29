@@ -14,6 +14,9 @@ COMMANDS_DEST="$HOME/.config/opencode/commands"
 CONFIG_DEST="$HOME/.config/opencode/opencode.json"
 AGENTS_DEST="$HOME/.config/opencode/AGENTS.md"
 
+# shellcheck source=compaction-policy.sh
+source "$SCRIPT_DIR/compaction-policy.sh"
+
 if [ ! -f "$PROJECT_ROOT/dist/index.js" ]; then
   echo "dist/index.js not found - run 'pnpm run symlink:opencode' (which builds first) or 'pnpm run build'" >&2
   exit 1
@@ -80,17 +83,80 @@ if [ -f "$CONFIG_SRC" ]; then
 
   DIST_PLUGIN_PATH="file://$PROJECT_ROOT/dist/index.js"
 
-  python3 - "$CONFIG_SRC" "$CONFIG_DEST" "$DIST_PLUGIN_PATH" <<'PYJSON'
+  if ! command -v opencode >/dev/null 2>&1; then
+    echo "opencode CLI not found on PATH - it resolves the model windows the compaction policy needs" >&2
+    exit 1
+  fi
+
+  # Each model's own window, as OpenCode resolves it for the signed-in
+  # providers (a subscription login can narrow the catalogue's window), with
+  # no global config loaded so an earlier install's overrides do not count.
+  MODELS_FILE="$(mktemp)"
+  EMPTY_CONFIG_HOME="$(mktemp -d)"
+  trap 'rm -rf "$MODELS_FILE" "$EMPTY_CONFIG_HOME"' EXIT
+  (cd "$EMPTY_CONFIG_HOME" && XDG_CONFIG_HOME="$EMPTY_CONFIG_HOME" opencode models --verbose --pure) > "$MODELS_FILE"
+
+  python3 - "$CONFIG_SRC" "$CONFIG_DEST" "$DIST_PLUGIN_PATH" "$MODELS_FILE" "${COMPACT_AT_TOKENS_BY_PROVIDER[@]}" <<'PYJSON'
 import json
 import os
+import re
 import sys
 
-src_path, dest_path, plugin_path = sys.argv[1:4]
+src_path, dest_path, plugin_path, models_path = sys.argv[1:5]
+
+compact_at_by_provider = {}
+for entry in sys.argv[5:]:
+  provider, _, value = entry.partition('=')
+  if provider == '' or not (value == 'max' or value.isdigit()):
+    sys.exit(f'compaction policy entry must be <provider>=<tokens|max>, got: {entry}')
+  compact_at_by_provider[provider] = value if value == 'max' else int(value)
 
 with open(src_path, 'r', encoding='utf-8') as src_file:
   config = json.load(src_file)
 
 config['plugin'] = [plugin_path]
+
+# `opencode models --verbose` prints each model as a "<provider>/<model>" line
+# followed by its JSON.
+with open(models_path, 'r', encoding='utf-8') as models_file:
+  blocks = re.split(r'^(\S+/\S+)\n', models_file.read(), flags=re.M)
+models = {blocks[i]: json.loads(blocks[i + 1]) for i in range(1, len(blocks), 2)}
+if not models:
+  sys.exit('opencode models --verbose listed no models; cannot apply the compaction policy')
+
+reserved = config.get('compaction', {}).get('reserved')
+if not isinstance(reserved, int):
+  sys.exit('opencode.json must set compaction.reserved; the compaction policy is computed from it')
+
+# A model compacts once its tokens reach limit.input - reserved (limit.context
+# minus its output budget when it declares no input limit). A limit set in
+# opencode.json is a measured window that replaces the resolved one, for a
+# model whose login serves a different window than OpenCode reports. Only a
+# window larger than the policy's is lowered to it; a smaller one is never
+# raised, since the real window is what the provider enforces. A provider
+# listed as max, or not listed at all, is never lowered.
+for provider_id in sorted({model_ref.split('/', 1)[0] for model_ref in models}):
+  compact_at = compact_at_by_provider.get(provider_id)
+  if compact_at is None:
+    print(f'  compact  {provider_id}/* at each model\'s own window (provider not in the compaction policy)')
+  elif compact_at == 'max':
+    print(f'  compact  {provider_id}/* at each model\'s own window (policy: max)')
+  else:
+    print(f'  compact  {provider_id}/* at {compact_at} tokens, or its own window when smaller (policy)')
+for model_ref, model in sorted(models.items()):
+  provider_id, model_id = model_ref.split('/', 1)
+  model_config = config.get('provider', {}).get(provider_id, {}).get('models', {}).get(model_id, {})
+  limit = model_config.get('limit', model['limit'])
+  window = limit.get('input', limit['context'])
+  compact_at = compact_at_by_provider.get(provider_id, 'max')
+  policy_input = window if compact_at == 'max' else compact_at + reserved
+  if window <= policy_input:
+    if 'limit' in model_config:
+      print(f'  compact  {model_ref} at {window - reserved} tokens (measured input limit {window})')
+    continue
+  overrides = config.setdefault('provider', {}).setdefault(provider_id, {}).setdefault('models', {})
+  overrides.setdefault(model_id, {})['limit'] = {'context': limit['context'], 'input': policy_input, 'output': limit['output']}
+  print(f'  compact  {model_ref} at {compact_at} tokens (input limit {policy_input})')
 
 os.makedirs(os.path.dirname(dest_path), exist_ok=True)
 with open(dest_path, 'w', encoding='utf-8') as dest_file:

@@ -1,0 +1,1 @@
+name the orchestration task directory from the handoff, reload the workflow-orchestration and workflow-agentic skills, and call orch_digest on that task directory before doing anything else - the digest is the authoritative state, the handoff only fills what it does not carry.
