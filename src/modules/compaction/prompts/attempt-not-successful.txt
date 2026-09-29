@@ -1,0 +1,3 @@
+The compaction just before this one did not finish successfully. Do not treat any earlier handoff in this session as current - it describes an older state. Its own note, if it produced one, follows.
+
+{{priorNote}}

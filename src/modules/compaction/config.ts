@@ -14,6 +14,18 @@ export const ORCH_TOOL_PREFIX = 'orch_'
 export const WRITER_RESERVED_TOKENS = 40_000
 export const PROMPT_CHARS_PER_TOKEN = 3
 
+// A tool call's input is never dropped from the record (unlike its result),
+// so an unbounded one - a Write's full file content, a large Edit - could
+// alone exceed the writer's budget with nothing the record builder can do
+// about it. Past this many characters the middle is elided instead.
+export const MAX_TOOL_CALL_INPUT_CHARS = 4_000
+
+// The previous successful handoff is fed to the writer as its own block, so
+// it needs the same bound as a tool-call input: past this many characters
+// the middle is elided, so a single oversized handoff cannot alone consume
+// the writer's whole budget.
+export const MAX_PREVIOUS_HANDOFF_CHARS = 20_000
+
 // Tool results are the only entries dropped to fit the writer's window, in
 // the order they are cheapest to recover: output that is a function of the
 // files on disk first, shell output next, and everything else (subagent
@@ -40,8 +52,10 @@ export const FILE_WRITING_TOOLS = new Map([
 ])
 
 // Handoffs are written under the Claude Code config directory, one directory
-// per session, newest file last in name order.
+// per session. Each session directory also holds a manifest recording every
+// compaction attempt and its status.
 export const HANDOFF_DIR_NAME = 'handoffs'
+export const MANIFEST_FILE_NAME = 'manifest.json'
 
 // The writer call's own bound, used when the installer does not pass
 // --writer-timeout-seconds. Kept below Claude Code's PreCompact hook default

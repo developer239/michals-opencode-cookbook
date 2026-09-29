@@ -30,3 +30,24 @@ export interface IProfileChoice {
   // that named one; null for the default profile or when no call named one.
   taskDir: string | null
 }
+
+// One compaction's attempt to write a handoff: pending the moment it begins,
+// so a crash before it resolves still leaves a record instead of silence,
+// then resolved to success or failed once the writer (or the record itself)
+// settles. A resolved attempt carries the file its content was written to,
+// so a reader never has to re-derive the filename from the id and profile.
+export type IHandoffAttempt =
+  | { id: string; status: 'pending' }
+  | { id: string; status: 'success'; profile: CompactionProfile; taskDir: string | null; fileName: string }
+  | { id: string; status: 'failed'; profile: CompactionProfile; taskDir: string | null; fileName: string }
+
+export type IResolvedHandoffAttempt = Extract<IHandoffAttempt, { status: 'success' | 'failed' }>
+
+export interface ICompleteAttemptInput {
+  sessionId: string
+  attemptId: string
+  status: 'success' | 'failed'
+  profile: CompactionProfile
+  taskDir: string | null
+  content: string
+}

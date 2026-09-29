@@ -1,4 +1,4 @@
-Write a handoff document for a session that is about to be compacted, so it can resume the work with full precision. Use only what you can see - never invent a decision, a fact, or a next step. Write these sections, in order, and write "None." under any section that genuinely has nothing to report - do not pad a section with generic advice to fill it.
+Write a handoff document for a session that is about to be compacted, so it can resume the work with full precision. Use only what you can see - never invent a decision, a fact, or a next step. If a previous handoff is given below, treat it as durable: carry forward every item that is still true, updated by anything the session record shows happened since, and drop an item only when the record shows it resolved or superseded - say which. Write these sections, in order, and write "None." under any section that genuinely has nothing to report - do not pad a section with generic advice to fill it.
 
 ## Decisions and Rulings
 The owner's decisions and rulings during this session, each with its why.

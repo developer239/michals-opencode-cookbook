@@ -12,7 +12,7 @@ describe('[compaction] SessionRecordService', () => {
     // Arrange
     const userText = `IMPORTANT INSTRUCTION: ${'u'.repeat(10_000)}`
     const assistantText = 'a'.repeat(10_000)
-    const editInput = { file_path: '/repo/plan.config.ts', new_string: 'b'.repeat(10_000) }
+    const editInput = { file_path: '/repo/plan.config.ts', new_string: 'b'.repeat(100) }
     const resultText = 'c'.repeat(10_000)
     const events: SessionEvent[] = [
       { kind: 'user', text: userText },
@@ -88,6 +88,23 @@ describe('[compaction] SessionRecordService', () => {
     assert.ok(record.includes('dev counts'))
     assert.ok(record.includes('the owner said: ship it'))
     assert.ok(record.length <= fullLength - 3_000)
+  })
+
+  it('should elide the middle of a tool call input past the character limit, keeping the head and tail', () => {
+    // Arrange
+    const filePath = '/repo/generated/large-fixture.json'
+    const content = `START-MARKER${'x'.repeat(20_000)}END-MARKER`
+    const events: SessionEvent[] = [{ kind: 'tool_call', tool: 'Write', input: { file_path: filePath, content } }]
+
+    // Act
+    const record = service.build(events, UNLIMITED)
+
+    // Assert
+    assert.ok(record.includes(filePath))
+    assert.ok(record.includes('START-MARKER'))
+    assert.ok(record.includes('END-MARKER'))
+    assert.ok(record.includes('characters omitted'))
+    assert.ok(!record.includes(content))
   })
 
   it('should never drop a user message, assistant text or tool call, even when the record stays over budget', () => {

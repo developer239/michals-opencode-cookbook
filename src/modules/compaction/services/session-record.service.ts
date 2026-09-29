@@ -1,6 +1,12 @@
 import { MarkdownBuilder } from '../../_core/services/markdown-builder.service.js'
 import { PluginError } from '../../_core/types/errors.js'
-import { FILE_WRITING_TOOLS, MCP_TOOL_PREFIX, SHELL_TOOLS, TREE_READ_TOOLS } from '../config.js'
+import {
+  FILE_WRITING_TOOLS,
+  MAX_TOOL_CALL_INPUT_CHARS,
+  MCP_TOOL_PREFIX,
+  SHELL_TOOLS,
+  TREE_READ_TOOLS,
+} from '../config.js'
 import type { SessionEvent } from '../types/compaction.types.js'
 
 const ENTRY_SEPARATOR = '\n\n'
@@ -69,7 +75,7 @@ export class SessionRecordService {
         return {
           text: MarkdownBuilder.create()
             .heading(`Tool call: ${event.tool}`, 3)
-            .codeBlock(JSON.stringify(event.input), 'json')
+            .codeBlock(this.abbreviateInput(event.input), 'json')
             .build(),
           dropTier: null,
         }
@@ -83,6 +89,21 @@ export class SessionRecordService {
         throw new PluginError(`Unhandled session event: ${JSON.stringify(exhaustive)}`, 'INTERNAL_ERROR')
       }
     }
+  }
+
+  // A tool call is never dropped (only its result is), so its rendering is
+  // bounded here instead: past the limit, the middle is elided and the total
+  // and omitted counts are recorded, keeping the file path and the shape of
+  // the input (which usually survive in the kept head and tail) without the
+  // full payload.
+  private readonly abbreviateInput = (input: Record<string, unknown>): string => {
+    const json = JSON.stringify(input)
+    if (json.length <= MAX_TOOL_CALL_INPUT_CHARS) {
+      return json
+    }
+    const half = Math.floor(MAX_TOOL_CALL_INPUT_CHARS / 2)
+    const omitted = json.length - half * 2
+    return `${json.slice(0, half)}\n...(${String(omitted)} characters omitted, ${String(json.length)} total)...\n${json.slice(-half)}`
   }
 
   // Each kept entry costs its text plus the separator before it. The sort is

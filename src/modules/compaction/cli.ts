@@ -4,14 +4,14 @@ import { dirname } from 'node:path'
 import { parseArgs } from 'node:util'
 import { PromptLoaderService } from '../_core/services/prompt-loader.service.js'
 import { PluginError } from '../_core/types/errors.js'
-import { PROMPT_CHARS_PER_TOKEN, WRITER_RESERVED_TOKENS } from './config.js'
+import { MAX_PREVIOUS_HANDOFF_CHARS, PROMPT_CHARS_PER_TOKEN, WRITER_RESERVED_TOKENS } from './config.js'
 import { GitStateService } from './services/git-state.service.js'
 import { HandoffStoreService } from './services/handoff-store.service.js'
 import { HandoffWriterService } from './services/handoff-writer.service.js'
 import { ProfileChoiceService } from './services/profile-choice.service.js'
 import { SessionRecordService } from './services/session-record.service.js'
 import { TranscriptParserService } from './services/transcript-parser.service.js'
-import { COMPACTION_PROFILES, type CompactionProfile } from './types/compaction.types.js'
+import type { CompactionProfile } from './types/compaction.types.js'
 
 // The two Claude Code hooks the installer wires up. Both read the hook's own
 // JSON on stdin and print to stdout; neither takes --task like the orch CLI.
@@ -25,6 +25,7 @@ Commands:
 const COMMANDS = new Set(['pre-compact', 'session-start'])
 
 const NO_TASK_DIR_TEXT = 'unknown - no orch tool call in this session named one'
+const NO_PREVIOUS_HANDOFF_TEXT = "None. This is the session's first compaction."
 
 interface IHookInput {
   sessionId: string
@@ -90,12 +91,25 @@ const buildWriterPrompt = (
   profile: CompactionProfile,
   taskDir: string | null,
   gitState: string,
+  previousHandoff: string,
   record: string
 ): string => {
   const instructions = PromptLoaderService.build(loadPrompt(`${profile}-handoff`), {
     taskDir: taskDir ?? NO_TASK_DIR_TEXT,
   })
-  return PromptLoaderService.build(loadPrompt('writer-wrapper'), { instructions, gitState, record })
+  return PromptLoaderService.build(loadPrompt('writer-wrapper'), { instructions, previousHandoff, gitState, record })
+}
+
+// The previous handoff is fed to the writer whole, not fitted to the
+// record's budget, so it needs its own bound: past the limit the middle is
+// elided, the same shape SessionRecordService uses for a tool-call input.
+const truncateMiddle = (text: string, maxChars: number): string => {
+  if (text.length <= maxChars) {
+    return text
+  }
+  const half = Math.floor(maxChars / 2)
+  const omitted = text.length - half * 2
+  return `${text.slice(0, half)}\n...(${String(omitted)} characters omitted, ${String(text.length)} total)...\n${text.slice(-half)}`
 }
 
 const buildFailureHandoff = (message: string, taskDir: string | null): string => {
@@ -120,72 +134,122 @@ const runPreCompact = async (
   }
 
   const store = new HandoffStoreService()
+  const attemptId = store.beginAttempt(input.sessionId)
+  // Known as soon as ProfileChoiceService runs; hoisted so a later throw in
+  // this try block still resolves the attempt with whatever was already
+  // learned, instead of falling back to hardcoded defaults.
+  let profile: CompactionProfile = 'default'
+  let taskDir: string | null = null
   try {
     const transcriptText = readFileSync(input.transcriptPath, 'utf-8')
     const events = new TranscriptParserService().parse(transcriptText)
     if (events.length === 0) {
-      const path = store.write(
-        input.sessionId,
-        'default',
-        buildFailureHandoff(
+      const path = store.completeAttempt({
+        sessionId: input.sessionId,
+        attemptId,
+        status: 'failed',
+        profile,
+        taskDir,
+        content: buildFailureHandoff(
           'The transcript had no readable events (every line failed to parse, or it was empty).',
           null
-        )
-      )
+        ),
+      })
       return `Wrote a failure handoff for session ${input.sessionId} to ${path}: transcript had no readable events`
     }
-    const { profile, taskDir } = new ProfileChoiceService().choose(events)
+    ;({ profile, taskDir } = new ProfileChoiceService().choose(events))
     const recordService = new SessionRecordService()
     const gitState = new GitStateService().describe([
       input.cwd,
       ...recordService.listWrittenFiles(events).map((path) => dirname(path)),
     ])
+    const previousSuccess = store.latestSuccess(input.sessionId)
+    const previousHandoff =
+      previousSuccess === null
+        ? NO_PREVIOUS_HANDOFF_TEXT
+        : truncateMiddle(store.read(input.sessionId, previousSuccess), MAX_PREVIOUS_HANDOFF_CHARS)
     const promptBudget = (writerContextTokens - WRITER_RESERVED_TOKENS) * PROMPT_CHARS_PER_TOKEN
-    const recordBudget = promptBudget - buildWriterPrompt(profile, taskDir, gitState, '').length
+    const recordBudget = promptBudget - buildWriterPrompt(profile, taskDir, gitState, previousHandoff, '').length
     const record = recordService.build(events, recordBudget)
+    if (record.length > recordBudget) {
+      const path = store.completeAttempt({
+        sessionId: input.sessionId,
+        attemptId,
+        status: 'failed',
+        profile,
+        taskDir,
+        content: buildFailureHandoff(
+          `The session record needs ${String(record.length)} characters but the writer's budget allows only ` +
+            `${String(recordBudget)}, even after dropping every droppable entry. Nothing was sent to the writer.`,
+          taskDir
+        ),
+      })
+      return (
+        `Wrote a failure handoff for session ${input.sessionId} to ${path}: record exceeds writer budget ` +
+        `(${String(record.length)} > ${String(recordBudget)})`
+      )
+    }
     const written = new HandoffWriterService().write(
       writerModel,
-      buildWriterPrompt(profile, taskDir, gitState, record),
+      buildWriterPrompt(profile, taskDir, gitState, previousHandoff, record),
       writerTimeoutMs
     )
     const content = written.isOk ? written.text : buildFailureHandoff(written.text, taskDir)
-    const path = store.write(input.sessionId, profile, content)
+    const path = store.completeAttempt({
+      sessionId: input.sessionId,
+      attemptId,
+      status: written.isOk ? 'success' : 'failed',
+      profile,
+      taskDir,
+      content,
+    })
     return `Wrote handoff for session ${input.sessionId} to ${path} (profile: ${profile})`
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    const path = store.write(input.sessionId, 'default', buildFailureHandoff(message, null))
+    const path = store.completeAttempt({
+      sessionId: input.sessionId,
+      attemptId,
+      status: 'failed',
+      profile,
+      taskDir,
+      content: buildFailureHandoff(message, taskDir),
+    })
     return `Wrote a failure handoff for session ${input.sessionId} to ${path}: ${message}`
   }
-}
-
-// The profile a handoff was written under, read back from its filename
-// (`<timestamp>-<profile>.md`); an unrecognized suffix falls back to the
-// default resume steps rather than failing the session-start hook.
-const parseProfileFromFilename = (path: string): CompactionProfile => {
-  const candidate = /-(?<profile>[a-z]+)\.md$/u.exec(path)?.groups?.profile
-  return (COMPACTION_PROFILES as readonly string[]).includes(candidate ?? '')
-    ? (candidate as CompactionProfile)
-    : 'default'
 }
 
 const runSessionStart = async (): Promise<string> => {
   const raw = await readStdin()
   const input = parseHookInput(raw)
   const store = new HandoffStoreService()
-  const handoffPath = store.findLatest(input.sessionId)
+  const latest = store.latestAttempt(input.sessionId)
 
-  if (handoffPath === null) {
+  if (latest === null) {
     return PromptLoaderService.build(loadPrompt('no-handoff'), {
       handoffDir: store.directoryFor(input.sessionId),
       transcriptPath: input.transcriptPath,
     })
   }
 
+  // The latest compaction did not succeed: never fall back to an older
+  // successful handoff as if it were current, since that silently misleads
+  // the resumed session about how stale its context actually is.
+  if (latest.status !== 'success') {
+    const priorNote =
+      latest.status === 'failed' ? store.read(input.sessionId, latest) : 'It never finished; no note was written.'
+    const notice = PromptLoaderService.build(loadPrompt('attempt-not-successful'), { priorNote })
+    const caution = PromptLoaderService.build(loadPrompt('no-handoff'), {
+      handoffDir: store.directoryFor(input.sessionId),
+      transcriptPath: input.transcriptPath,
+    })
+    return `${notice.trim()}\n\n${caution.trim()}`
+  }
+
   const preamble = PromptLoaderService.build(loadPrompt('resume-preamble'), {
-    handoffPath,
+    handoffPath: store.pathOf(input.sessionId, latest),
     transcriptPath: input.transcriptPath,
   })
-  const tail = loadPrompt(`${parseProfileFromFilename(handoffPath)}-resume`)
+  const tail = loadPrompt(`${latest.profile}-resume`)
   return `${preamble.trim()} ${tail.trim()}`
 }
 

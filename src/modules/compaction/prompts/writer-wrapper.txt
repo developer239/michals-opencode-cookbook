@@ -2,6 +2,10 @@ You are writing a handoff document for a Claude Code session. You have no tools 
 
 {{instructions}}
 
+The handoff written at this session's previous compaction, if any. Treat it as durable: carry forward anything still true, updated by anything newer in the session record below, and drop only what the record shows is resolved or superseded. This block is not part of the session record and is never truncated to fit it.
+
+{{previousHandoff}}
+
 Git state of each repository the session touched, captured just now, at compaction time:
 
 {{gitState}}

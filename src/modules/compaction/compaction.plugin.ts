@@ -1,5 +1,6 @@
 import type { Plugin } from '@opencode-ai/plugin'
 import { PromptLoaderService } from '../_core/services/prompt-loader.service.js'
+import { GitStateService } from './services/git-state.service.js'
 import { OpencodeSessionParserService } from './services/opencode-session-parser.service.js'
 import { ProfileChoiceService } from './services/profile-choice.service.js'
 
@@ -11,7 +12,7 @@ const loadPrompt = (name: string): string => PromptLoaderService.load(new URL(`.
 // registered in the MCP bridge (src/mcp/server.ts only bridges tools; Claude
 // Code gets the equivalent behavior from its own PreCompact/SessionStart
 // hooks, wired up by scripts/link-claude-code.sh).
-export const CompactionPlugin: Plugin = async ({ client }) => {
+export const CompactionPlugin: Plugin = async ({ client, directory }) => {
   const parser = new OpencodeSessionParserService()
   const chooser = new ProfileChoiceService()
 
@@ -26,11 +27,16 @@ export const CompactionPlugin: Plugin = async ({ client }) => {
       const instructions = PromptLoaderService.build(loadPrompt(`${profile}-handoff`), {
         taskDir: taskDir ?? NO_TASK_DIR_TEXT,
       })
+      // Only the project root is scoped here, unlike Claude Code's cwd plus
+      // every written file's directory - OpenCode's own tool names for a
+      // file write are not the Claude Code names config.ts's
+      // FILE_WRITING_TOOLS matches, so that expansion does not apply as is.
+      const gitState = new GitStateService().describe([directory])
       const resumeSteps = loadPrompt(`${profile}-resume`).trim()
       output.prompt =
-        `${instructions}\n\nWrite the handoff above as your compaction summary - it is what this session resumes ` +
-        `from. This session's id is ${sessionID}; if anything needs the exact original wording, it is still ` +
-        `readable with oc_get_session or oc_search_sessions. After the handoff, add: ${resumeSteps}`
+        `${instructions}\n\n${gitState}\n\nWrite the handoff above as your compaction summary - it is what this ` +
+        `session resumes from. This session's id is ${sessionID}; if anything needs the exact original wording, ` +
+        `it is still readable with oc_get_session or oc_search_sessions. After the handoff, add: ${resumeSteps}`
     },
   }
 }

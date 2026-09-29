@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { WRITER_RESERVED_TOKENS } from './config.js'
+import { MAX_PREVIOUS_HANDOFF_CHARS, WRITER_RESERVED_TOKENS } from './config.js'
 import { HandoffStoreService } from './services/handoff-store.service.js'
+import type { IResolvedHandoffAttempt } from './types/compaction.types.js'
 
 const CLI_PATH = fileURLToPath(new URL('./cli.js', import.meta.url))
 
@@ -67,6 +68,15 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
     return path
   }
 
+  // Most tests only care about the one attempt a single pre-compact run
+  // produces, and it is always resolved (pending is not a state a finished
+  // process leaves behind).
+  const latestResolved = (store: HandoffStoreService, sessionId: string): IResolvedHandoffAttempt => {
+    const latest = store.latestAttempt(sessionId)
+    assert.ok(latest !== null && latest.status !== 'pending')
+    return latest
+  }
+
   it('should write a default-profile handoff and exit 0', () => {
     // Arrange
     const transcriptPath = writeTranscript([
@@ -83,10 +93,11 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
     // Assert
     assert.equal(result.status, 0)
     assert.match(result.stdout, /profile: default/u)
-    const handoffPath = new HandoffStoreService(configDir).findLatest('session-default')
-    assert.ok(handoffPath !== null)
-    assert.ok(handoffPath.endsWith('-default.md'))
-    assert.match(readFileSync(handoffPath, 'utf-8'), /written by the stub writer/u)
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-default')
+    assert.equal(attempt.status, 'success')
+    assert.equal(attempt.profile, 'default')
+    assert.match(store.read('session-default', attempt), /written by the stub writer/u)
   })
 
   it('should write an orchestration-profile handoff naming the task directory from the last orch tool call', () => {
@@ -112,9 +123,10 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
     // Assert
     assert.equal(result.status, 0)
     assert.match(result.stdout, /profile: orchestration/u)
-    const handoffPath = new HandoffStoreService(configDir).findLatest('session-orch')
-    assert.ok(handoffPath !== null)
-    assert.ok(handoffPath.endsWith('-orchestration.md'))
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-orch')
+    assert.equal(attempt.status, 'success')
+    assert.equal(attempt.profile, 'orchestration')
   })
 
   it('should still exit 0 and write a failure handoff when the writer binary fails', () => {
@@ -130,9 +142,10 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
 
     // Assert
     assert.equal(result.status, 0)
-    const handoffPath = new HandoffStoreService(configDir).findLatest('session-fail')
-    assert.ok(handoffPath !== null)
-    assert.match(readFileSync(handoffPath, 'utf-8'), /Handoff writer failed/u)
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-fail')
+    assert.equal(attempt.status, 'failed')
+    assert.match(store.read('session-fail', attempt), /Handoff writer failed/u)
   })
 
   it('should write a failure handoff and skip the writer call when the transcript has no readable events', () => {
@@ -148,9 +161,10 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
     // Assert
     assert.equal(result.status, 0)
     assert.match(result.stdout, /no readable events/u)
-    const handoffPath = new HandoffStoreService(configDir).findLatest('session-empty')
-    assert.ok(handoffPath !== null)
-    assert.match(readFileSync(handoffPath, 'utf-8'), /no readable events/u)
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-empty')
+    assert.equal(attempt.status, 'failed')
+    assert.match(store.read('session-empty', attempt), /no readable events/u)
   })
 
   it('should keep the last known task directory in a writer-failure handoff for the orchestration profile', () => {
@@ -180,10 +194,11 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
 
     // Assert
     assert.equal(result.status, 0)
-    const handoffPath = new HandoffStoreService(configDir).findLatest('session-orch-fail')
-    assert.ok(handoffPath !== null)
-    assert.ok(handoffPath.endsWith('-orchestration.md'))
-    assert.match(readFileSync(handoffPath, 'utf-8'), /\/tmp\/orch-task/u)
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-orch-fail')
+    assert.equal(attempt.status, 'failed')
+    assert.equal(attempt.profile, 'orchestration')
+    assert.match(store.read('session-orch-fail', attempt), /\/tmp\/orch-task/u)
   })
 
   it('should still exit 0 when the hook input is not valid JSON, and write no handoff', () => {
@@ -218,9 +233,9 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
 
     // Assert
     assert.equal(result.status, 0)
-    const handoffPath = new HandoffStoreService(configDir).findLatest('session-echo')
-    assert.ok(handoffPath !== null)
-    const prompt = readFileSync(handoffPath, 'utf-8')
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-echo')
+    const prompt = store.read('session-echo', attempt)
     assert.match(prompt, /## Git state\n\nNo git repository contains any of: /u)
     assert.ok(prompt.includes(`## Files written\n\n- ${scratchFile}`))
     assert.ok(prompt.includes(JSON.stringify({ file_path: scratchFile, content: 'Q20' })))
@@ -248,9 +263,9 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
 
     // Assert
     assert.equal(result.status, 0)
-    const handoffPath = new HandoffStoreService(configDir).findLatest('session-tight')
-    assert.ok(handoffPath !== null)
-    const prompt = readFileSync(handoffPath, 'utf-8')
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-tight')
+    const prompt = store.read('session-tight', attempt)
     assert.ok(prompt.includes('the owner said: ship it'))
     assert.ok(prompt.includes('/repo/big.ts'))
     assert.ok(!prompt.includes('z'.repeat(20_000)))
@@ -269,7 +284,112 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
     // Assert
     assert.equal(result.status, 0)
     assert.match(result.stdout, /could not read its hook input.*missing cwd/u)
-    assert.equal(new HandoffStoreService(configDir).findLatest('session-no-cwd'), null)
+    assert.equal(new HandoffStoreService(configDir).latestAttempt('session-no-cwd'), null)
+  })
+
+  it('should write a failure handoff and skip the writer call when even the mandatory content cannot fit the budget', () => {
+    // Arrange
+    writeFileSync(claudeBin, ECHO_CLAUDE, { mode: 0o755 })
+    const transcriptPath = writeTranscript([{ type: 'user', message: { role: 'user', content: 'Hello' } }])
+    const tinyWindow = String(WRITER_RESERVED_TOKENS + 10)
+
+    // Act
+    const result = runCli(
+      ['pre-compact', '--writer-model', 'claude-opus-4-8', '--writer-context-tokens', tinyWindow],
+      JSON.stringify({ session_id: 'session-overflow', transcript_path: transcriptPath, cwd: workDir, trigger: 'auto' })
+    )
+
+    // Assert
+    assert.equal(result.status, 0)
+    assert.match(result.stdout, /record exceeds writer budget/u)
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-overflow')
+    assert.equal(attempt.status, 'failed')
+    assert.match(store.read('session-overflow', attempt), /needs .* characters but the writer's budget allows only/u)
+  })
+
+  it("should tell the writer there is no previous handoff on a session's first compaction", () => {
+    // Arrange
+    writeFileSync(claudeBin, ECHO_CLAUDE, { mode: 0o755 })
+    const transcriptPath = writeTranscript([{ type: 'user', message: { role: 'user', content: 'Hello' } }])
+
+    // Act
+    const result = runCli(
+      PRE_COMPACT_ARGS,
+      JSON.stringify({ session_id: 'session-first', transcript_path: transcriptPath, cwd: workDir, trigger: 'auto' })
+    )
+
+    // Assert
+    assert.equal(result.status, 0)
+    const store = new HandoffStoreService(configDir)
+    const attempt = latestResolved(store, 'session-first')
+    assert.ok(store.read('session-first', attempt).includes("None. This is the session's first compaction."))
+  })
+
+  it('should feed the previous successful handoff to the writer as a carry-forward block', () => {
+    // Arrange
+    writeFileSync(claudeBin, ECHO_CLAUDE, { mode: 0o755 })
+    const store = new HandoffStoreService(configDir)
+    const priorId = store.beginAttempt('session-carry')
+    store.completeAttempt({
+      sessionId: 'session-carry',
+      attemptId: priorId,
+      status: 'success',
+      profile: 'default',
+      taskDir: null,
+      content: '# Handoff\n\n## Next Steps\n\nFinish the migration.\n',
+    })
+    const transcriptPath = writeTranscript([{ type: 'user', message: { role: 'user', content: 'Continuing' } }])
+
+    // Act
+    const result = runCli(
+      PRE_COMPACT_ARGS,
+      JSON.stringify({ session_id: 'session-carry', transcript_path: transcriptPath, cwd: workDir, trigger: 'auto' })
+    )
+
+    // Assert
+    assert.equal(result.status, 0)
+    const attempt = latestResolved(store, 'session-carry')
+    const prompt = store.read('session-carry', attempt)
+    assert.ok(prompt.includes('Finish the migration.'))
+    assert.ok(prompt.includes('treat it as durable'))
+  })
+
+  it('should elide the middle of an oversized previous handoff instead of sending it whole', () => {
+    // Arrange
+    writeFileSync(claudeBin, ECHO_CLAUDE, { mode: 0o755 })
+    const store = new HandoffStoreService(configDir)
+    const priorId = store.beginAttempt('session-huge-prior')
+    const hugeContent = `START-MARKER${'p'.repeat(MAX_PREVIOUS_HANDOFF_CHARS)}END-MARKER`
+    store.completeAttempt({
+      sessionId: 'session-huge-prior',
+      attemptId: priorId,
+      status: 'success',
+      profile: 'default',
+      taskDir: null,
+      content: hugeContent,
+    })
+    const transcriptPath = writeTranscript([{ type: 'user', message: { role: 'user', content: 'Continuing' } }])
+
+    // Act
+    const result = runCli(
+      PRE_COMPACT_ARGS,
+      JSON.stringify({
+        session_id: 'session-huge-prior',
+        transcript_path: transcriptPath,
+        cwd: workDir,
+        trigger: 'auto',
+      })
+    )
+
+    // Assert
+    assert.equal(result.status, 0)
+    const attempt = latestResolved(store, 'session-huge-prior')
+    const prompt = store.read('session-huge-prior', attempt)
+    assert.ok(prompt.includes('START-MARKER'))
+    assert.ok(prompt.includes('END-MARKER'))
+    assert.ok(prompt.includes('characters omitted'))
+    assert.ok(!prompt.includes(hugeContent))
   })
 
   it('should refuse pre-compact without a --writer-context-tokens above the writer reserve', () => {
@@ -312,7 +432,15 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
   it('should print the default resume directive naming the handoff and transcript paths', () => {
     // Arrange
     const store = new HandoffStoreService(configDir)
-    const handoffPath = store.write('session-default', 'default', '# Handoff\n\ncontent\n')
+    const id = store.beginAttempt('session-default')
+    const handoffPath = store.completeAttempt({
+      sessionId: 'session-default',
+      attemptId: id,
+      status: 'success',
+      profile: 'default',
+      taskDir: null,
+      content: '# Handoff\n\ncontent\n',
+    })
 
     // Act
     const result = runCli(
@@ -330,7 +458,15 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
   it('should print the orchestration resume directive when the latest handoff was written under that profile', () => {
     // Arrange
     const store = new HandoffStoreService(configDir)
-    store.write('session-orch', 'orchestration', '# Handoff\n\ncontent\n')
+    const id = store.beginAttempt('session-orch')
+    store.completeAttempt({
+      sessionId: 'session-orch',
+      attemptId: id,
+      status: 'success',
+      profile: 'orchestration',
+      taskDir: null,
+      content: '# Handoff\n\ncontent\n',
+    })
 
     // Act
     const result = runCli(
@@ -341,5 +477,58 @@ describe('[compaction] CLI - pre-compact and session-start hooks', () => {
     // Assert
     assert.equal(result.status, 0)
     assert.match(result.stdout, /call orch_digest on that task directory/u)
+  })
+
+  it('should warn instead of silently resuming from a stale success when the latest attempt failed', () => {
+    // Arrange
+    const store = new HandoffStoreService(configDir)
+    const firstId = store.beginAttempt('session-stale')
+    store.completeAttempt({
+      sessionId: 'session-stale',
+      attemptId: firstId,
+      status: 'success',
+      profile: 'default',
+      taskDir: null,
+      content: '# Handoff\n\nfirst, successful\n',
+    })
+    const secondId = store.beginAttempt('session-stale')
+    store.completeAttempt({
+      sessionId: 'session-stale',
+      attemptId: secondId,
+      status: 'failed',
+      profile: 'default',
+      taskDir: null,
+      content: '# Handoff writer failed\n\nboom\n',
+    })
+
+    // Act
+    const result = runCli(
+      ['session-start'],
+      JSON.stringify({ session_id: 'session-stale', transcript_path: '/tmp/t.jsonl' })
+    )
+
+    // Assert
+    assert.equal(result.status, 0)
+    assert.match(result.stdout, /did not finish successfully/u)
+    assert.match(result.stdout, /boom/u)
+    assert.ok(!result.stdout.includes('first, successful'))
+    assert.ok(!result.stdout.includes('resume the work exactly where the handoff says it left off'))
+  })
+
+  it('should warn without a failure note when the latest attempt is still pending', () => {
+    // Arrange
+    const store = new HandoffStoreService(configDir)
+    store.beginAttempt('session-pending')
+
+    // Act
+    const result = runCli(
+      ['session-start'],
+      JSON.stringify({ session_id: 'session-pending', transcript_path: '/tmp/t.jsonl' })
+    )
+
+    // Assert
+    assert.equal(result.status, 0)
+    assert.match(result.stdout, /did not finish successfully/u)
+    assert.match(result.stdout, /never finished/u)
   })
 })
